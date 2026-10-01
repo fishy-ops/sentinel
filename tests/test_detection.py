@@ -60,10 +60,20 @@ def test_offline_online_feature_parity() -> None:
 @pytest.mark.parametrize(
     ("name", "positive", "negative"),
     [
-        ("velocity", {"account_age": 8, "count_10m": 3, "usual_max_10m": 2}, {"count_10m": 2}),
+        (
+            "velocity",
+            {"account_age": 8, "count_10m": 3, "count_1h": 3, "count_24h": 3, "usual_max_10m": 2},
+            {"count_10m": 2},
+        ),
         (
             "account_takeover",
-            {"account_age": 8, "is_new_device": 1, "is_new_country": 1, "amount_to_p95": 1},
+            {
+                "account_age": 8,
+                "is_new_device": 1,
+                "is_new_country": 1,
+                "is_online": 1,
+                "hour_deviation": 5,
+            },
             {"is_new_country": 0},
         ),
         (

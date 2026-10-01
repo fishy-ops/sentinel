@@ -1,77 +1,158 @@
 {
   "combined": {
     "counts": {
-      "false_negative": 61,
-      "false_positive": 36,
-      "true_positive": 76
+      "false_negative": 9,
+      "false_positive": 47,
+      "true_positive": 128
     },
-    "f1": 0.6104417670682731,
+    "episode_recall_per_pattern": {
+      "account_takeover": 1.0,
+      "amount_spike": 1.0,
+      "dormant_drain": 1.0,
+      "structuring": 1.0,
+      "velocity_burst": 1.0
+    },
+    "f1": 0.8205128205128205,
     "false_positive_rate_per_scenario": {
       "busy_day": 0.0,
       "large_purchase": 1.0,
-      "new_device": 0.0,
-      "none": 0.005283816425120773,
+      "new_device": 0.04,
+      "none": 0.006802721088435374,
       "travel": 0.0
     },
-    "pr_auc": 0.5581008781500116,
-    "precision": 0.6785714285714286,
-    "recall": 0.5547445255474452,
-    "recall_per_pattern": {
-      "account_takeover": 0.20833333333333334,
-      "amount_spike": 0.6111111111111112,
-      "dormant_drain": 0.5416666666666666,
+    "median_transactions_until_first_flag": {
+      "account_takeover": 1.0,
+      "amount_spike": 1.0,
+      "dormant_drain": 1.0,
       "structuring": 1.0,
-      "velocity_burst": 0.48936170212765956
+      "velocity_burst": 2.0
+    },
+    "pr_auc": 0.9231636156276479,
+    "precision": 0.7314285714285714,
+    "recall": 0.9343065693430657,
+    "recall_per_pattern": {
+      "account_takeover": 1.0,
+      "amount_spike": 0.9444444444444444,
+      "dormant_drain": 0.9583333333333334,
+      "structuring": 1.0,
+      "velocity_burst": 0.851063829787234
     }
   },
   "forest": {
     "counts": {
-      "false_negative": 77,
-      "false_positive": 19,
-      "true_positive": 60
+      "false_negative": 57,
+      "false_positive": 30,
+      "true_positive": 80
     },
-    "f1": 0.5555555555555556,
+    "episode_recall_per_pattern": {
+      "account_takeover": 0.8333333333333334,
+      "amount_spike": 0.6666666666666666,
+      "dormant_drain": 1.0,
+      "structuring": 1.0,
+      "velocity_burst": 1.0
+    },
+    "f1": 0.6477732793522267,
     "false_positive_rate_per_scenario": {
       "busy_day": 0.0,
       "large_purchase": 0.0,
       "new_device": 0.0,
-      "none": 0.0028683574879227055,
+      "none": 0.0045351473922902496,
       "travel": 0.0
     },
-    "pr_auc": 0.6123791116612776,
-    "precision": 0.759493670886076,
-    "recall": 0.43795620437956206,
-    "recall_per_pattern": {
-      "account_takeover": 0.0,
-      "amount_spike": 0.16666666666666666,
-      "dormant_drain": 0.4166666666666667,
+    "median_transactions_until_first_flag": {
+      "account_takeover": 2.0,
+      "amount_spike": 2.5,
+      "dormant_drain": 1.0,
       "structuring": 1.0,
-      "velocity_burst": 0.48936170212765956
+      "velocity_burst": 4.0
+    },
+    "pr_auc": 0.6892025308731227,
+    "precision": 0.7272727272727273,
+    "recall": 0.583941605839416,
+    "recall_per_pattern": {
+      "account_takeover": 0.375,
+      "amount_spike": 0.3333333333333333,
+      "dormant_drain": 0.4583333333333333,
+      "structuring": 1.0,
+      "velocity_burst": 0.6382978723404256
     }
   },
   "rules": {
     "counts": {
-      "false_negative": 91,
+      "false_negative": 53,
       "false_positive": 24,
-      "true_positive": 46
+      "true_positive": 84
     },
-    "f1": 0.4444444444444444,
+    "episode_recall_per_pattern": {
+      "account_takeover": 0.8333333333333334,
+      "amount_spike": 1.0,
+      "dormant_drain": 0.8333333333333334,
+      "structuring": 1.0,
+      "velocity_burst": 1.0
+    },
+    "f1": 0.6857142857142857,
     "false_positive_rate_per_scenario": {
       "busy_day": 0.0,
       "large_purchase": 1.0,
       "new_device": 0.0,
-      "none": 0.003472222222222222,
+      "none": 0.003476946334089191,
       "travel": 0.0
     },
-    "pr_auc": 0.26405620747624065,
-    "precision": 0.6571428571428571,
-    "recall": 0.3357664233576642,
+    "median_transactions_until_first_flag": {
+      "account_takeover": 1.0,
+      "amount_spike": 1.0,
+      "dormant_drain": 1.0,
+      "structuring": 1.0,
+      "velocity_burst": 4.0
+    },
+    "pr_auc": 0.4976642741699299,
+    "precision": 0.7777777777777778,
+    "recall": 0.6131386861313869,
     "recall_per_pattern": {
-      "account_takeover": 0.20833333333333334,
-      "amount_spike": 0.5555555555555556,
+      "account_takeover": 0.5416666666666666,
+      "amount_spike": 0.6111111111111112,
       "dormant_drain": 0.3333333333333333,
       "structuring": 0.9583333333333334,
-      "velocity_burst": 0.0
+      "velocity_burst": 0.6170212765957447
+    }
+  },
+  "supervised": {
+    "counts": {
+      "false_negative": 9,
+      "false_positive": 3,
+      "true_positive": 128
+    },
+    "episode_recall_per_pattern": {
+      "account_takeover": 1.0,
+      "amount_spike": 1.0,
+      "dormant_drain": 1.0,
+      "structuring": 1.0,
+      "velocity_burst": 1.0
+    },
+    "f1": 0.9552238805970149,
+    "false_positive_rate_per_scenario": {
+      "busy_day": 0.0,
+      "large_purchase": 0.0,
+      "new_device": 0.04,
+      "none": 0.0003023431594860166,
+      "travel": 0.0
+    },
+    "median_transactions_until_first_flag": {
+      "account_takeover": 1.0,
+      "amount_spike": 1.0,
+      "dormant_drain": 1.0,
+      "structuring": 1.0,
+      "velocity_burst": 2.0
+    },
+    "pr_auc": 0.9784344777994471,
+    "precision": 0.9770992366412213,
+    "recall": 0.9343065693430657,
+    "recall_per_pattern": {
+      "account_takeover": 1.0,
+      "amount_spike": 0.9444444444444444,
+      "dormant_drain": 0.9583333333333334,
+      "structuring": 1.0,
+      "velocity_burst": 0.851063829787234
     }
   }
 }

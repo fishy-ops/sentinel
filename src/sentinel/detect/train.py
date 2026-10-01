@@ -6,7 +6,7 @@ from pathlib import Path
 import joblib
 import numpy as np
 import sklearn
-from sklearn.ensemble import IsolationForest
+from sklearn.ensemble import HistGradientBoostingClassifier, IsolationForest
 from sklearn.metrics import precision_recall_curve
 
 from sentinel.detect.data import load_split
@@ -15,7 +15,7 @@ from sentinel.detect.iforest import matrix
 
 
 def train(data_root: Path, artifact: Path, seed: int = 42) -> dict[str, object]:
-    _, train_features, _ = load_split(data_root / "train")
+    _, train_features, train_labels = load_split(data_root / "train")
     _, val_features, val_labels = load_split(data_root / "val")
     train_matrix = matrix(train_features)
     model = IsolationForest(n_estimators=200, random_state=seed, n_jobs=1)
@@ -39,6 +39,20 @@ def train(data_root: Path, artifact: Path, seed: int = 42) -> dict[str, object]:
     artifact.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(model, artifact)
     artifact.with_suffix(".json").write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n")
+    supervised = HistGradientBoostingClassifier(random_state=seed)
+    supervised.fit(train_matrix, [int(row["is_fraud"]) for row in train_labels])
+    supervised_scores = supervised.predict_proba(matrix(val_features))[:, 1]
+    precision, recall, thresholds = precision_recall_curve(truth, supervised_scores)
+    f1 = 2 * precision[:-1] * recall[:-1] / np.maximum(precision[:-1] + recall[:-1], 1e-12)
+    supervised_artifact = artifact.with_name("supervised.joblib")
+    supervised_metadata = metadata | {
+        "version": "supervised-1",
+        "threshold": float(thresholds[int(np.argmax(f1))]),
+    }
+    joblib.dump(supervised, supervised_artifact)
+    supervised_artifact.with_suffix(".json").write_text(
+        json.dumps(supervised_metadata, indent=2, sort_keys=True) + "\n"
+    )
     return metadata
 
 

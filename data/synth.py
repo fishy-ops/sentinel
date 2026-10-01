@@ -363,7 +363,7 @@ def _episode(
     for index in range(count):
         if pattern == "velocity_burst":
             if index:
-                elapsed += timedelta(minutes=float(rng.uniform(1, 12)))
+                elapsed += timedelta(seconds=float(rng.uniform(5, 90)))
             amount = (
                 float(rng.uniform(0.5, 6))
                 if rng.random() < 0.35
@@ -457,7 +457,7 @@ def generate_dataset(out: Path, seed: int, accounts: int, days: int, split: str)
         account = account_rows[int(owner_order[episode_index])]
         count = max(PATTERN_SIZES[pattern], round(PATTERN_SIZES[pattern] * scale))
         if pattern == "velocity_burst":
-            count += int(rng.integers(0, 4))
+            count = int(rng.integers(5, 13))
         if pattern == "dormant_drain":
             quiet_days = int(rng.integers(10, min(30, days - 2) + 1))
             start = START + timedelta(days=int(rng.integers(quiet_days + 1, days)), hours=12)

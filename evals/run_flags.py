@@ -1,6 +1,7 @@
 import argparse
 import json
 from pathlib import Path
+from statistics import median
 from typing import Any
 
 import matplotlib
@@ -18,7 +19,7 @@ from sentinel.detect.score import CombinedScorer, Detection
 
 PATTERNS = ("velocity_burst", "account_takeover", "amount_spike", "structuring", "dormant_drain")
 SCENARIOS = ("travel", "new_device", "large_purchase", "busy_day", "none")
-MODES = ("rules", "forest", "combined")
+MODES = ("rules", "forest", "supervised", "combined")
 
 
 def evaluate(
@@ -26,12 +27,27 @@ def evaluate(
 ) -> dict[str, Any]:
     rows, features, labels = load_split(data_root / "eval")
     scorer = CombinedScorer.from_artifact(artifact)
+    forest_scores = (
+        scorer.forest.anomaly_scores(features) if scorer.forest else [0.0] * len(features)
+    )
+    supervised_scores = (
+        scorer.supervised.probabilities(features) if scorer.supervised else [0.0] * len(features)
+    )
     truth = [bool(label["is_fraud"]) for label in labels]
     outputs: dict[str, dict[str, Any]] = {}
     failed: list[dict[str, Any]] = []
     plt.figure(figsize=(6, 4))
     for mode in MODES:
-        detections: list[Detection] = [scorer.detect(item, mode) for item in features]
+        detections: list[Detection] = [
+            scorer.detect(
+                item,
+                mode,
+                float(forest_scores[index]),
+                float(supervised_scores[index]),
+                explain_features=False,
+            )
+            for index, item in enumerate(features)
+        ]
         predicted = [item.flagged for item in detections]
         scores = [item.score for item in detections]
         precision, recall, f1, _ = precision_recall_fscore_support(
@@ -46,6 +62,23 @@ def evaluate(
             / max(1, sum(label["pattern"] == pattern for label in labels))
             for pattern in PATTERNS
         }
+        episodes: dict[str, list[int]] = {}
+        for index, label in enumerate(labels):
+            if label["episode_id"]:
+                episodes.setdefault(label["episode_id"], []).append(index)
+        episode_recall = {}
+        median_until_flag = {}
+        for pattern in PATTERNS:
+            groups = [
+                indices for indices in episodes.values() if labels[indices[0]]["pattern"] == pattern
+            ]
+            delays = [
+                next(position + 1 for position, index in enumerate(indices) if predicted[index])
+                for indices in groups
+                if any(predicted[index] for index in indices)
+            ]
+            episode_recall[pattern] = len(delays) / max(1, len(groups))
+            median_until_flag[pattern] = float(median(delays)) if delays else None
         scenario_fpr = {
             scenario: sum(
                 predicted[index]
@@ -68,6 +101,8 @@ def evaluate(
             "f1": float(f1),
             "pr_auc": pr_auc,
             "recall_per_pattern": pattern_recall,
+            "episode_recall_per_pattern": episode_recall,
+            "median_transactions_until_first_flag": median_until_flag,
             "false_positive_rate_per_scenario": scenario_fpr,
             "counts": {
                 "true_positive": sum(t and p for t, p in zip(truth, predicted, strict=True)),
@@ -109,19 +144,22 @@ def evaluate(
         )
     lines.append(
         "\n## Recall by fraud pattern\n\n"
-        "| Pattern | Rules | Forest | Combined |\n|---|---:|---:|---:|\n"
+        "| Pattern | Detector | Transaction recall | Episode recall | "
+        "Median transactions until first flag |\n"
+        "|---|---|---:|---:|---:|\n"
     )
     for pattern in PATTERNS:
-        lines.append(
-            "| "
-            + pattern
-            + " | "
-            + " | ".join(f"{outputs[mode]['recall_per_pattern'][pattern]:.3f}" for mode in MODES)
-            + " |\n"
-        )
+        for mode in MODES:
+            item = outputs[mode]
+            delay = item["median_transactions_until_first_flag"][pattern]
+            lines.append(
+                f"| {pattern} | {mode} | {item['recall_per_pattern'][pattern]:.3f} | "
+                f"{item['episode_recall_per_pattern'][pattern]:.3f} | "
+                f"{delay if delay is not None else '—'} |\n"
+            )
     lines.append(
         "\n## False-positive rate by legitimate scenario\n\n"
-        "| Scenario | Rules | Forest | Combined |\n|---|---:|---:|---:|\n"
+        "| Scenario | Rules | Forest | Supervised | Combined |\n|---|---:|---:|---:|---:|\n"
     )
     for scenario in SCENARIOS:
         lines.append(

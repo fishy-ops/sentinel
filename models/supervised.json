@@ -59,7 +59,7 @@
   ],
   "seed": 42,
   "sklearn_version": "1.9.1",
-  "threshold": 0.059464266962604206,
+  "threshold": 0.029077640666723685,
   "training_data_hash": "a40d8609bc3408374179a073cc14e5adc9ed8169032aac22735dc0c11f25e369",
-  "version": "iforest-1"
+  "version": "supervised-1"
 }

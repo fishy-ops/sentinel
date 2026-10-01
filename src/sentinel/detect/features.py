@@ -26,12 +26,17 @@ FEATURE_NAMES = (
     "is_new_merchant",
     "device_seen_count",
     "country_seen_count",
+    "device_age_hours",
+    "country_age_hours",
+    "new_device_count_24h",
     "hour_deviation",
+    "is_online",
     "is_transfer",
     "near_threshold",
     "near_threshold_transfers_7d",
     "usual_max_10m",
 )
+REPORTING_THRESHOLD = 10000
 
 
 def _field(row: Mapping[str, Any] | object, name: str) -> Any:
@@ -77,6 +82,16 @@ def transaction_features(
     merchant = _field(transaction, "merchant_name")
     device_count = sum(_field(row, "device_id") == device for row in prior)
     country_count = sum(_field(row, "country") == country for row in prior)
+    first_device = next((_time(row) for row in prior if _field(row, "device_id") == device), when)
+    first_country = next((_time(row) for row in prior if _field(row, "country") == country), when)
+    older_devices = {
+        _field(row, "device_id") for row in prior if _time(row) < when - timedelta(days=1)
+    }
+    recent_devices = {
+        _field(row, "device_id")
+        for row in windows["24h"]
+        if _field(row, "device_id") not in older_devices
+    }
     merchant_count = sum(_field(row, "merchant_name") == merchant for row in prior)
     hours = [_time(row).hour + _time(row).minute / 60 for row in prior]
     if hours:
@@ -90,7 +105,8 @@ def transaction_features(
     else:
         hour_deviation = 0.0
     usual_max = 0
-    prior_times = [_time(row) for row in prior]
+    # Baseline excludes the last 24 hours so a burst in progress cannot raise its own baseline.
+    prior_times = [_time(row) for row in prior if when - _time(row) > timedelta(days=1)]
     left = 0
     for right, point in enumerate(prior_times):
         while point - prior_times[left] > timedelta(minutes=10):
@@ -115,13 +131,17 @@ def transaction_features(
         "is_new_merchant": float(merchant_count == 0),
         "device_seen_count": float(device_count),
         "country_seen_count": float(country_count),
+        "device_age_hours": (when - first_device).total_seconds() / 3600,
+        "country_age_hours": (when - first_country).total_seconds() / 3600,
+        "new_device_count_24h": float(len(recent_devices)),
         "hour_deviation": hour_deviation,
+        "is_online": float(_field(transaction, "channel") == "online"),
         "is_transfer": float(_field(transaction, "channel") == "transfer"),
-        "near_threshold": float(9000 <= amount < 10000),
+        "near_threshold": float(0.9 * REPORTING_THRESHOLD <= amount < REPORTING_THRESHOLD),
         "near_threshold_transfers_7d": float(
             sum(
                 _field(row, "channel") == "transfer"
-                and 9000 <= float(_field(row, "amount")) < 10000
+                and 0.9 * REPORTING_THRESHOLD <= float(_field(row, "amount")) < REPORTING_THRESHOLD
                 and when - _time(row) <= timedelta(days=7)
                 for row in prior
             )
