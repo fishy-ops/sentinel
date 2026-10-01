@@ -1,4 +1,4 @@
-.PHONY: install lint test data
+.PHONY: install lint test data run
 
 install:
 	uv sync
@@ -8,6 +8,9 @@ lint:
 
 test:
 	uv run pytest -q
+
+run:
+	uv run uvicorn sentinel.api.main:app --factory --reload
 
 data:
 	@for split in train val eval finetune; do \
