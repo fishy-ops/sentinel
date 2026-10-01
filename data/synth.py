@@ -53,6 +53,40 @@ MERCHANTS = (
     ("Phone Plan", "subscription"),
     ("Bank Transfer", "transfer"),
 )
+ONE_OFF_PREFIXES = (
+    "Birch",
+    "Cedar",
+    "Willow",
+    "Maple",
+    "Elm",
+    "Juniper",
+    "Pine",
+    "Hawthorn",
+    "Meadow",
+    "Brook",
+    "Summit",
+    "Valley",
+    "Harbor",
+    "Ridge",
+    "Stone",
+    "Sunrise",
+)
+ONE_OFF_SUFFIXES = (
+    "Books",
+    "Florist",
+    "Kitchen",
+    "Outfitters",
+    "Hardware",
+    "Gifts",
+    "Studio",
+    "Antiques",
+    "Supply",
+    "Market",
+    "Gallery",
+    "Cyclery",
+    "Pets",
+    "Home Goods",
+)
 MEMOS = (
     "groceries",
     "weekend plans",
@@ -133,6 +167,16 @@ def _money(value: float) -> str:
     return str(amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
+def _one_off_merchant(rng: np.random.Generator, used: set[str]) -> tuple[str, str]:
+    while True:
+        prefix = ONE_OFF_PREFIXES[int(rng.integers(len(ONE_OFF_PREFIXES)))]
+        suffix = ONE_OFF_SUFFIXES[int(rng.integers(len(ONE_OFF_SUFFIXES)))]
+        name = f"{prefix} {suffix}"
+        if name not in used:
+            used.add(name)
+            return name, "retail"
+
+
 def _timestamp(value: datetime) -> str:
     return value.isoformat().replace("+00:00", "Z")
 
@@ -196,6 +240,7 @@ def _legitimate(rng: np.random.Generator, accounts: list[Account], days: int) ->
     records = []
     for account in accounts:
         merchant_lookup = [item for item in MERCHANTS if item[0] in account.usual_merchants]
+        used_merchants = set(account.usual_merchants)
         for day in range(days):
             count = int(rng.poisson(account.transactions_per_day))
             if day == 0:
@@ -215,7 +260,7 @@ def _legitimate(rng: np.random.Generator, accounts: list[Account], days: int) ->
                     ("Bank Transfer", "transfer")
                     if is_transfer
                     else (
-                        (f"Local Shop {account.account_id}-{day}-{_}", "retail")
+                        _one_off_merchant(rng, used_merchants)
                         if is_one_off
                         else merchant_lookup[int(rng.integers(len(merchant_lookup)))]
                     )

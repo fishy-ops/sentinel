@@ -7,7 +7,14 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from data.synth import PATTERN_SIZES, SPLITS, generate_dataset
+from data.synth import (
+    MERCHANTS,
+    ONE_OFF_PREFIXES,
+    ONE_OFF_SUFFIXES,
+    PATTERN_SIZES,
+    SPLITS,
+    generate_dataset,
+)
 
 
 def _read(path: Path) -> list[dict[str, object]]:
@@ -38,6 +45,24 @@ def test_different_seeds_differ(tmp_path: Path) -> None:
     assert (first / "transactions.jsonl").read_bytes() != (
         second / "transactions.jsonl"
     ).read_bytes()
+
+
+def test_one_off_merchants_have_distinct_names_per_account(splits: dict[str, Path]) -> None:
+    known = {name for name, _ in MERCHANTS}
+    rows = _read(splits["train"] / "transactions.jsonl")
+    names: dict[str, set[str]] = defaultdict(set)
+    found = 0
+    for row in rows:
+        name = str(row["merchant_name"])
+        if row["merchant_category"] != "retail" or name in known:
+            continue
+        assert name.startswith(tuple(f"{prefix} " for prefix in ONE_OFF_PREFIXES))
+        assert name.endswith(ONE_OFF_SUFFIXES)
+        account = str(row["account_id"])
+        assert name not in names[account]
+        names[account].add(name)
+        found += 1
+    assert found > 0
 
 
 def test_splits_have_disjoint_accounts(splits: dict[str, Path]) -> None:
@@ -187,5 +212,8 @@ def test_hard_negative_behavior_and_merchant_variety(splits: dict[str, Path]) ->
     times = [datetime.fromisoformat(str(row["timestamp"])) for row in busy]
     assert (max(times) - min(times)).total_seconds() <= 2 * 3600
     assert len({row["merchant_name"] for row in transactions}) >= 30
-    assert any(str(row["merchant_name"]).startswith("Local Shop") for row in transactions)
+    assert any(
+        str(row["merchant_name"]).startswith(tuple(f"{prefix} " for prefix in ONE_OFF_PREFIXES))
+        for row in transactions
+    )
     assert len({row["memo"] for row in transactions if row["memo"]}) >= 5
