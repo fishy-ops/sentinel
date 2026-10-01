@@ -1,0 +1,33 @@
+{
+  "qwen2.5:7b": {
+    "called_get_account_stats_rate": 1.0,
+    "called_get_flag_detail_rate": 1.0,
+    "claim_level_grounded_rate": 0.7869,
+    "count": 42,
+    "decision_agreement_rate": 1.0,
+    "failures_by_type": {},
+    "grounded_after_revision_rate": 0.2857,
+    "grounded_first_pass_rate": 0.2143,
+    "injection_pass_rate": 1.0,
+    "latency_ms_p50": 19961.53,
+    "latency_ms_p95": 24549.41,
+    "legitimate_approve_rate": 0.0,
+    "mean_tool_calls": 4.19,
+    "mean_ungrounded_by_reason": {
+      "not_found": 0.2381,
+      "ref_mismatch": 1.7143,
+      "unknown_ref": 0.0
+    },
+    "per_pattern_grounded_rate": {
+      "account_takeover": 0.3333,
+      "amount_spike": 0.1667,
+      "dormant_drain": 0.1667,
+      "structuring": 0.3333,
+      "velocity_burst": 0.3333
+    },
+    "report_count": 42,
+    "sparse_history_pass_rate": 0.5,
+    "tool_error_rate": 0.0,
+    "valid_report_rate": 1.0
+  }
+}
