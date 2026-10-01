@@ -11,6 +11,8 @@ dependencies = [
     "fastapi",
     "uvicorn",
     "pydantic>=2",
+    "pydantic-settings>=2",
+    "pycountry>=24",
     "sqlalchemy>=2",
     "scikit-learn",
     "numpy",
