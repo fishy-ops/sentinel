@@ -16,3 +16,5 @@ build/
 *.onnx
 data/generated/
 evals/failures/
+
+evals/runs/

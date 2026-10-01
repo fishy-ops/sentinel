@@ -1,4 +1,4 @@
-.PHONY: install lint test data train eval-flags run
+.PHONY: install lint test data train eval-flags eval-explanations redteam run
 
 install:
 	uv sync
@@ -22,3 +22,9 @@ train:
 
 eval-flags:
 	uv run python -m evals.run_flags
+
+eval-explanations:
+	uv run python -m evals.run_explanations --models qwen2.5:7b --per-group 6 --seed 7
+
+redteam:
+	uv run python -m evals.redteam
