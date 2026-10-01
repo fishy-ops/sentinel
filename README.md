@@ -36,3 +36,15 @@ Set `SENTINEL_LLM_BASE_URL` (default `http://localhost:11434/v1`) and `SENTINEL_
 With a local model available, run `make eval-explanations` to sample flagged transactions from the eval split and score report validity, grounding, tool use, decisions, and adversarial cases. Use `uv run python -m evals.run_explanations --help` for model, sample size, and revision options. Results are in `evals/results/explanations.{json,md}` and `docs/results/grounding.png`; cached runs and failure records are ignored by Git.
 
 Run `make redteam` for in-process API and tool-boundary checks. Add `--with-model` to `uv run python -m evals.redteam` to include the live prompt-injection case. The suite writes `evals/results/redteam.{json,md}` and exits nonzero if any attack fails.
+
+## Analyst console demo
+
+```sh
+make demo
+uv run python -m sentinel.demo --no-serve
+uv run python -m sentinel.demo --explain 3
+docker compose up --build
+docker compose exec ollama ollama pull qwen2.5:7b
+make check
+make help
+```

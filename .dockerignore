@@ -1,0 +1,12 @@
+.git
+.venv
+__pycache__
+*.db
+*.joblib
+data/generated
+training
+evals/results
+evals/runs
+evals/failures
+docs
+tests

@@ -18,3 +18,6 @@ data/generated/
 evals/failures/
 
 evals/runs/
+training/data/
+training/adapters/
+training/build/

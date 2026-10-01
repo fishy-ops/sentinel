@@ -1,4 +1,18 @@
-.PHONY: install lint test data train eval-flags eval-explanations redteam run
+.PHONY: install lint test data train eval-flags eval-explanations redteam run demo eval check help
+
+help:
+	@printf 'install            Install dependencies\n'
+	@printf 'lint               Run lint checks\n'
+	@printf 'test               Run tests\n'
+	@printf 'data               Generate data splits\n'
+	@printf 'train              Train detectors\n'
+	@printf 'eval-flags         Evaluate flag detection\n'
+	@printf 'eval-explanations  Evaluate reports with a model\n'
+	@printf 'eval               Run flag and report evaluation\n'
+	@printf 'redteam            Run security checks without a model\n'
+	@printf 'run                Start the API with reload\n'
+	@printf 'demo               Prepare data and start the console\n'
+	@printf 'check              Run lint, format check, and tests\n'
 
 install:
 	uv sync
@@ -11,6 +25,16 @@ test:
 
 run:
 	uv run uvicorn sentinel.api.main:app --factory --reload
+
+demo:
+	uv run python -m sentinel.demo
+
+eval: eval-flags eval-explanations
+
+check:
+	uv run ruff check .
+	uv run ruff format --check .
+	uv run pytest -q
 
 data:
 	@for split in train val eval finetune; do \
