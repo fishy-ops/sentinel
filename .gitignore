@@ -15,3 +15,4 @@ build/
 *.pickle
 *.onnx
 data/generated/
+evals/failures/

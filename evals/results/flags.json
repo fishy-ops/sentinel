@@ -1,0 +1,77 @@
+{
+  "combined": {
+    "counts": {
+      "false_negative": 61,
+      "false_positive": 36,
+      "true_positive": 76
+    },
+    "f1": 0.6104417670682731,
+    "false_positive_rate_per_scenario": {
+      "busy_day": 0.0,
+      "large_purchase": 1.0,
+      "new_device": 0.0,
+      "none": 0.005283816425120773,
+      "travel": 0.0
+    },
+    "pr_auc": 0.5581008781500116,
+    "precision": 0.6785714285714286,
+    "recall": 0.5547445255474452,
+    "recall_per_pattern": {
+      "account_takeover": 0.20833333333333334,
+      "amount_spike": 0.6111111111111112,
+      "dormant_drain": 0.5416666666666666,
+      "structuring": 1.0,
+      "velocity_burst": 0.48936170212765956
+    }
+  },
+  "forest": {
+    "counts": {
+      "false_negative": 77,
+      "false_positive": 19,
+      "true_positive": 60
+    },
+    "f1": 0.5555555555555556,
+    "false_positive_rate_per_scenario": {
+      "busy_day": 0.0,
+      "large_purchase": 0.0,
+      "new_device": 0.0,
+      "none": 0.0028683574879227055,
+      "travel": 0.0
+    },
+    "pr_auc": 0.6123791116612776,
+    "precision": 0.759493670886076,
+    "recall": 0.43795620437956206,
+    "recall_per_pattern": {
+      "account_takeover": 0.0,
+      "amount_spike": 0.16666666666666666,
+      "dormant_drain": 0.4166666666666667,
+      "structuring": 1.0,
+      "velocity_burst": 0.48936170212765956
+    }
+  },
+  "rules": {
+    "counts": {
+      "false_negative": 91,
+      "false_positive": 24,
+      "true_positive": 46
+    },
+    "f1": 0.4444444444444444,
+    "false_positive_rate_per_scenario": {
+      "busy_day": 0.0,
+      "large_purchase": 1.0,
+      "new_device": 0.0,
+      "none": 0.003472222222222222,
+      "travel": 0.0
+    },
+    "pr_auc": 0.26405620747624065,
+    "precision": 0.6571428571428571,
+    "recall": 0.3357664233576642,
+    "recall_per_pattern": {
+      "account_takeover": 0.20833333333333334,
+      "amount_spike": 0.5555555555555556,
+      "dormant_drain": 0.3333333333333333,
+      "structuring": 0.9583333333333334,
+      "velocity_burst": 0.0
+    }
+  }
+}
