@@ -127,6 +127,17 @@ function element(tag, className, value) {
   return node;
 }
 
+function placeholder(label, loading = false, kind = "") {
+  const block = element("div", `placeholder ${kind}${loading ? " loading" : ""}`.trim());
+  if (loading) {
+    block.append(element("span", "visually-hidden", label));
+    for (let index = 0; index < 3; index++) block.append(element("span", "skeleton-line"));
+  } else {
+    block.append(element("span", "placeholder-mark", "·"), element("span", "", label));
+  }
+  return block;
+}
+
 function svgElement(tag, attributes) {
   const node = document.createElementNS(svgNS, tag);
   for (const [name, value] of Object.entries(attributes)) node.setAttribute(name, String(value));
@@ -203,7 +214,9 @@ function drawQueue() {
     const top = element("div", "queue-top");
     const merchant = element("strong", "", transaction.merchant_name);
     merchant.title = transaction.merchant_name;
-    top.append(merchant, element("span", "", `${Math.round(flag.score * 100)}%`));
+    const score = element("span", "queue-score", `${Math.round(flag.score * 100)}%`);
+    if (flag.score >= 0.8) score.classList.add("high");
+    top.append(element("span", `risk-dot${flag.score >= 0.8 ? " high" : ""}`), merchant, score);
     const middle = element("div", "queue-middle");
     middle.append(element("b", "", money(transaction)), element("span", "", shortDate(transaction.timestamp)));
     const bottom = element("div", "queue-bottom");
@@ -230,7 +243,7 @@ function drawQueue() {
 
 async function loadQueue() {
   message($("queue-message"), "Loading flags…");
-  $("queue").replaceChildren();
+  $("queue").replaceChildren(...Array.from({ length: 3 }, () => placeholder("Loading flags", true, "queue-placeholder")));
   const params = new URLSearchParams({ limit: String(pageSize), offset: String(offset), min_score: $("score-filter").value });
   const account = $("account-filter").value.trim();
   if (account) params.set("account_id", account);
@@ -245,17 +258,20 @@ async function loadQueue() {
       $("empty-detail").hidden = false;
     }
     drawQueue();
+    if (!items.length) $("queue").append(placeholder("Try another account or minimum score.", false, "queue-empty"));
     if (items.length && !items.some((item) => selected && item.id === selected.id)) await selectFlag(items[0]);
   } catch (failure) {
     if (failure.status === 401 || failure.status === 403 || $("console").hidden) showSignIn(failure.message);
-    else message($("queue-message"), failure.message, true);
+    else {
+      message($("queue-message"), failure.message, true);
+      $("queue").replaceChildren(placeholder("The queue could not be loaded.", false, "queue-empty"));
+    }
   }
 }
 
 function drawFacts(transaction) {
   const facts = [
-    ["Transaction ID", transaction.transaction_id], ["Account", transaction.account_id],
-    ["Amount", money(transaction)], ["Time", shortDate(transaction.timestamp)],
+    ["Time", shortDate(transaction.timestamp)],
     ["Country", transaction.country], ["Channel", transaction.channel.replaceAll("_", " ")],
     ["Merchant category", transaction.merchant_category], ["Device", transaction.device_id],
     ["Memo", transaction.memo || "—"],
@@ -289,11 +305,17 @@ function drawChart() {
   const target = $("chart");
   target.replaceChildren();
   if (!timeline.length) {
-    target.append(element("p", "muted", "No account activity available."));
+    target.append(placeholder("No account activity available.", false, "chart-placeholder"));
+    target.setAttribute("aria-label", "No account activity available.");
     return;
   }
   const width = 800, height = 205, left = 55, right = 20, top = 18, bottom = 36;
   const svg = svgElement("svg", { viewBox: `0 0 ${width} ${height}`, preserveAspectRatio: "none", "aria-hidden": "true" });
+  const defs = svgElement("defs", {});
+  const gradient = svgElement("linearGradient", { id: "timeline-fill", x1: 0, y1: 0, x2: 0, y2: 1 });
+  gradient.append(svgElement("stop", { offset: 0, class: "area-top" }), svgElement("stop", { offset: 1, class: "area-bottom" }));
+  defs.append(gradient);
+  svg.append(defs);
   const times = timeline.map((row) => new Date(row.timestamp).valueOf());
   const amounts = timeline.map((row) => Math.max(0.01, Number(row.amount)));
   const log = Math.max(...amounts) / Math.min(...amounts) > 30;
@@ -313,10 +335,12 @@ function drawChart() {
     svg.append(label);
   }
   svg.append(svgElement("line", { x1: left, x2: width - right, y1: height - bottom, y2: height - bottom, class: "axis" }));
-  const polyline = svgElement("polyline", {
-    points: timeline.map((row, index) => `${x(times[index], index)},${y(values[index])}`).join(" "),
-    class: "line",
-  });
+  const linePoints = timeline.map((row, index) => `${x(times[index], index)},${y(values[index])}`).join(" ");
+  svg.append(svgElement("polygon", {
+    points: `${left},${height - bottom} ${linePoints} ${x(times[times.length - 1], times.length - 1)},${height - bottom}`,
+    fill: "url(#timeline-fill)", stroke: "none",
+  }));
+  const polyline = svgElement("polyline", { points: linePoints, class: "line", "stroke-linejoin": "round" });
   svg.append(polyline);
   const flaggedIds = new Set(accountFlags.map((flag) => flag.transaction_id));
   timeline.forEach((row, index) => {
@@ -325,7 +349,8 @@ function drawChart() {
     if (selected && row.transaction_id === selected.transaction_id) classes.push("selected");
     const point = svgElement("circle", {
       cx: x(times[index], index), cy: y(values[index]),
-      r: classes.includes("selected") ? 6 : 4, class: classes.join(" "),
+      r: classes.includes("selected") ? 6 : classes.includes("flagged") ? 4 : 2.5,
+      class: classes.join(" "),
     });
     point.dataset.ref = row.transaction_id;
     const title = svgElement("title", {});
@@ -393,10 +418,11 @@ function recordText(record) {
   return "Record available";
 }
 
-function emptyRecords(text) {
+function emptyRecords(text, loading = false) {
   const row = element("tr");
-  const cell = element("td", "muted", text);
+  const cell = element("td", "record-placeholder-cell");
   cell.colSpan = 2;
+  cell.append(placeholder(text, loading, "records-placeholder"));
   row.append(cell);
   $("records").replaceChildren(row);
 }
@@ -410,10 +436,11 @@ function drawReport(payload, loading = false) {
   if (!payload || !payload.explanation) {
     $("report-meta").textContent = payload && payload.failure
       ? `Report unavailable · ${payload.failure}` : loading ? "Loading report…" : "No report generated";
-    target.append(element("p", "report-empty", payload && payload.failure
+    target.append(placeholder(payload && payload.failure
       ? "The report could not be completed. Try generating it again."
-      : loading ? "Loading report and cited records…" : "Generate a report to review the evidence and cited records."));
-    emptyRecords(loading ? "Loading cited records…" : "No cited records yet.");
+      : loading ? "Loading report and cited records…" : "Generate a report to review the evidence and cited records.",
+    loading, "report-placeholder"));
+    emptyRecords(loading ? "Loading cited records…" : "No cited records yet.", loading);
     return;
   }
   const report = payload.explanation;
@@ -424,33 +451,43 @@ function drawReport(payload, loading = false) {
   badge.hidden = false;
   badge.classList.toggle("unverified", !payload.grounded);
   badge.textContent = payload.grounded ? "All claims verified against records" : "Some claims need review";
-  target.append(element("p", "report-summary", report.summary));
+  const issues = payload.grounding ? payload.grounding.ungrounded_items || [] : [];
+  const lead = element("div", "report-lead");
+  const summaryIssues = issues.filter((issue) => issue.claim_index === 0);
+  if (summaryIssues.length) lead.classList.add("rejected");
+  lead.append(element("p", "report-summary", report.summary));
+  for (const issue of summaryIssues) lead.append(element("p", "claim-warning", issueText(issue)));
+  target.append(lead);
   const stats = element("div", "report-stats");
   const statsItems = [
     ["Risk", report.risk_level],
     ["Action", report.recommended_action.replaceAll("_", " ")],
-    ["Confidence", `${Math.round(report.confidence * 100)}%`],
   ];
   for (const [label, value] of statsItems) {
     const pill = element("span");
+    pill.dataset.value = value;
     pill.append(element("strong", "", `${label}: `), document.createTextNode(value));
     stats.append(pill);
   }
+  const confidence = element("div", "confidence-stat");
+  const confidencePill = element("span");
+  confidencePill.append(element("strong", "", "Confidence: "),
+    document.createTextNode(`${Math.round(report.confidence * 100)}%`));
+  const meter = element("progress", "confidence-meter");
+  meter.max = 1;
+  meter.value = report.confidence;
+  meter.setAttribute("aria-label", "Report confidence");
+  confidence.append(confidencePill, meter);
+  stats.append(confidence);
   target.append(stats, element("h4", "report-section-title", "Evidence claims"));
-  const issues = payload.grounding ? payload.grounding.ungrounded_items || [] : [];
-  if (issues.length) {
-    const warning = element("div", "rejection");
-    warning.append(element("strong", "", "Unsupported details"));
-    const list = element("ul");
-    for (const issue of issues) list.append(element("li", "", issueText(issue)));
-    warning.append(list);
-    target.prepend(warning);
-  }
   report.evidence.forEach((claim, index) => {
     const box = element("div", "claim");
     const rejected = issues.filter((issue) => issue.claim_index === index + 1);
     if (rejected.length) box.classList.add("rejected");
-    box.append(element("span", "claim-text", claim.claim));
+    const heading = element("div", "claim-heading");
+    heading.append(element("span", "claim-number", index + 1), element("span", "claim-text", claim.claim));
+    box.append(heading);
+    for (const issue of rejected) box.append(element("p", "claim-warning", issueText(issue)));
     const chips = element("div", "chip-list");
     for (const ref of claim.refs) {
       const chip = element("button", "chip", ref);
@@ -489,12 +526,15 @@ async function selectFlag(flag) {
   $("detail-kicker").textContent = `FLAG #${flag.id} · ${shortDate(flag.transaction.timestamp)}`;
   $("detail-title").textContent = flag.transaction.merchant_name;
   $("detail-title").title = flag.transaction.merchant_name;
-  $("detail-subtitle").textContent = `${flag.transaction.account_id} · ${flag.transaction.transaction_id}`;
+  $("detail-amount").textContent = money(flag.transaction);
+  $("detail-subtitle").textContent = `Account ${flag.transaction.account_id} · Transaction ${flag.transaction.transaction_id}`;
   $("detail-score").textContent = `${Math.round(flag.score * 100)}% score`;
+  $("detail-score").classList.toggle("high", flag.score >= 0.8);
   drawFacts(flag.transaction);
   $("reasons").replaceChildren(...flag.reasons.map((reason) => reasonNode(reason, flag.transaction.currency)));
   message($("detail-message"), "Loading account context…");
-  $("chart").replaceChildren(element("p", "muted", "Loading account activity…"));
+  $("chart").replaceChildren(placeholder("Loading account activity…", true, "chart-placeholder"));
+  $("chart").setAttribute("aria-label", "Loading account activity.");
   drawReport(null, true);
   const results = await Promise.allSettled([
     loadTimeline(flag),
@@ -502,7 +542,8 @@ async function selectFlag(flag) {
   ]);
   if (!selected || selected.id !== flag.id) return;
   if (results[0].status === "rejected") {
-    $("chart").replaceChildren(element("p", "muted", "Account activity could not be loaded."));
+    $("chart").replaceChildren(placeholder("Account activity could not be loaded.", false, "chart-placeholder"));
+    $("chart").setAttribute("aria-label", "Account activity could not be loaded.");
   }
   if (results[1].status === "rejected") {
     drawReport({ failure: results[1].reason.message || "request failed" });
@@ -535,6 +576,7 @@ async function generate() {
       message($("detail-message"), status, Boolean(payload.failure));
     }
   } catch (failure) {
+    if (selected && selected.id === flagId) drawReport({ failure: failure.message || "request failed" });
     message($("detail-message"), failure.message || "Report generation failed.", true);
   } finally {
     clearInterval(ticker);

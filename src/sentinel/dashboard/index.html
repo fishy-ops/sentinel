@@ -25,7 +25,7 @@
       <section id="sign-in" class="sign-in" aria-labelledby="sign-in-title">
         <div class="sign-in-card">
           <div class="eyebrow">SECURE ACCESS</div>
-          <h1 id="sign-in-title">Review the signals behind every flag.</h1>
+          <h1 id="sign-in-title">Flag review, in context.</h1>
           <p>Enter a read-scoped API key to open the analyst queue. The key stays in this browser tab.</p>
           <form id="key-form">
             <label for="api-key">API key</label>
@@ -33,6 +33,11 @@
             <button type="submit" class="primary">Open console</button>
           </form>
           <p id="sign-in-error" class="error" role="alert" hidden></p>
+          <div class="sign-in-features" aria-label="Console views">
+            <div class="feature-tile"><span>01</span><strong>Flag queue</strong><small>Filter flagged activity</small></div>
+            <div class="feature-tile"><span>02</span><strong>Account timeline</strong><small>See transaction history</small></div>
+            <div class="feature-tile"><span>03</span><strong>Cited reports</strong><small>Inspect source records</small></div>
+          </div>
         </div>
       </section>
       <section id="console" class="workspace" hidden aria-label="Analyst workspace">
@@ -74,9 +79,12 @@
           </div>
           <div id="detail" hidden>
             <div class="detail-heading">
-              <div>
+              <div class="detail-heading-main">
                 <div id="detail-kicker" class="eyebrow"></div>
-                <h2 id="detail-title"></h2>
+                <div class="detail-identity">
+                  <h2 id="detail-title"></h2>
+                  <span id="detail-amount" class="detail-amount"></span>
+                </div>
                 <p id="detail-subtitle" class="muted"></p>
               </div>
               <div class="heading-right">
@@ -101,7 +109,7 @@
                 <ol id="reasons" class="reasons"></ol>
               </section>
             </div>
-            <section class="card timeline-card">
+            <section class="card">
               <div class="card-title">
                 <div>
                   <h3>Account timeline</h3>
@@ -119,7 +127,7 @@
                   <i class="legend-dot selected"></i>Selected flag</span>
               </div>
             </section>
-            <section class="card report-card">
+            <section class="card">
               <div class="card-title">
                 <div>
                   <h3>Analyst report</h3>
@@ -130,7 +138,7 @@
               </div>
               <div id="report"></div>
             </section>
-            <section class="card records-card">
+            <section class="card">
               <div class="card-title">
                 <div>
                   <h3>Cited records</h3>
