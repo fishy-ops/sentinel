@@ -9,3 +9,4 @@ class Settings(BaseSettings):
     rate_per_second: float = Field(default=10, gt=0)
     rate_burst: int = Field(default=20, gt=0)
     max_body_bytes: int = Field(default=1_000_000, gt=0)
+    model_artifact: str | None = None

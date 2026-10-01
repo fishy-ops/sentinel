@@ -61,16 +61,23 @@ def append(
             raise
 
 
-def verify(engine: Engine) -> tuple[bool, int | None]:
+def inspect(engine: Engine) -> tuple[bool, int | None, int, str | None]:
     with Session(engine) as session:
         rows = session.scalars(select(AuditLog).order_by(AuditLog.sequence)).all()
+    count = len(rows)
+    head = rows[-1].entry_hash if rows else None
     expected_sequence = 1
     previous_hash = "0" * 64
     for row in rows:
         if row.sequence != expected_sequence:
-            return False, expected_sequence
+            return False, expected_sequence, count, head
         if row.prev_hash != previous_hash or row.entry_hash != _digest(row):
-            return False, row.sequence
+            return False, row.sequence, count, head
         expected_sequence += 1
         previous_hash = row.entry_hash
-    return True, None
+    return True, None, count, head
+
+
+def verify(engine: Engine) -> tuple[bool, int | None]:
+    ok, broken, _, _ = inspect(engine)
+    return ok, broken

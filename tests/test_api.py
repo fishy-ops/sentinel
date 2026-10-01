@@ -1,18 +1,22 @@
+import asyncio
 import os
 import subprocess
 import sys
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from starlette.exceptions import HTTPException
 
 from sentinel.api.auth import create_key
 from sentinel.api.main import create_app
+from sentinel.api.rate import TokenBucket
 from sentinel.api.settings import Settings
 from sentinel.audit.chain import verify
 from sentinel.store.models import ApiKey, AuditLog, Flag, Transaction
@@ -221,10 +225,14 @@ def test_history_flags_pagination_and_audit(api: Fixture) -> None:
     )
     assert api.client.get("/v1/flags/99", headers=api.headers(api.read)).status_code == 404
     checked = api.client.get("/v1/audit/verify", headers=api.headers(api.admin))
-    assert checked.json() == {"ok": True, "first_broken_entry_id": None}
+    assert checked.json()["ok"] is True
+    assert checked.json()["first_broken_entry_id"] is None
+    assert checked.json()["entry_count"] == 7
     with Session(api.app.state.engine) as session:
         rows = session.scalars(select(AuditLog).order_by(AuditLog.sequence)).all()
         assert len(rows) == 8
+        assert checked.json()["head_hash"] == rows[-2].entry_hash
+        prior_head = rows[-1].entry_hash
         assert all(row.entry_hash and row.prev_hash for row in rows)
         audit_text = " ".join(str(row.__dict__) for row in rows)
         assert api.ingest not in audit_text
@@ -234,7 +242,10 @@ def test_history_flags_pagination_and_audit(api: Fixture) -> None:
         session.commit()
     assert verify(api.app.state.engine) == (False, 3)
     checked = api.client.get("/v1/audit/verify", headers=api.headers(api.admin))
-    assert checked.json() == {"ok": False, "first_broken_entry_id": 3}
+    assert checked.json()["ok"] is False
+    assert checked.json()["first_broken_entry_id"] == 3
+    assert checked.json()["entry_count"] == 8
+    assert checked.json()["head_hash"] == prior_head
 
 
 def test_injected_scorer_and_flag_routes(tmp_path: Path) -> None:
@@ -313,3 +324,94 @@ def test_verify_cli_exits_nonzero_for_broken_chain(api: Fixture, tmp_path: Path)
     )
     assert result.returncode != 0
     assert "broken at entry 1" in result.stdout
+
+
+@pytest.mark.parametrize("length", ["oops", "-1"])
+def test_invalid_content_length_is_bad_request(api: Fixture, length: str) -> None:
+    response = api.client.post(
+        "/v1/transactions",
+        headers=api.headers() | {"Content-Length": length},
+        content=b"{}",
+    )
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "bad_request"
+
+
+def test_very_large_content_length_is_bounded(api: Fixture) -> None:
+    response = api.client.post(
+        "/v1/transactions",
+        headers=api.headers() | {"Content-Length": "9" * 5000},
+        content=b"{}",
+    )
+    assert response.status_code == 413
+
+
+def test_streamed_body_stops_at_cap(tmp_path: Path) -> None:
+    api = Fixture(tmp_path / "stream.db", max_body_bytes=64)
+    sent = []
+
+    async def chunks() -> AsyncIterator[bytes]:
+        for index in range(3):
+            sent.append(index)
+            yield b"x" * 40
+
+    async def send() -> httpx.Response:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=api.app), base_url="http://test"
+        ) as client:
+            return await client.post("/v1/transactions", headers=api.headers(), content=chunks())
+
+    response = asyncio.run(send())
+    assert response.status_code == 413
+    assert sent == [0, 1]
+
+
+def test_rate_bucket_eviction_and_cap() -> None:
+    current = [0.0]
+    bucket = TokenBucket(1, 2, lambda: current[0], idle_ttl=10, max_buckets=2)
+    bucket.consume("a")
+    bucket.consume("b")
+    current[0] = 11
+    bucket.consume("c")
+    assert set(bucket.buckets) == {"c"}
+    bucket.consume("d")
+    bucket.consume("e")
+    assert len(bucket.buckets) == 2
+    assert "c" not in bucket.buckets
+
+
+def test_http_error_codes(api: Fixture) -> None:
+    async def teapot() -> None:
+        raise HTTPException(418)
+
+    api.app.add_api_route("/v1/teapot", teapot)
+    response = api.client.get("/v1/teapot", headers=api.headers(api.read))
+    assert response.status_code == 418
+    assert response.json()["error"]["code"] == "http_error"
+    response = api.client.get("/v1/missing", headers=api.headers(api.read))
+    assert response.json()["error"]["code"] == "not_found"
+    response = api.client.put("/v1/flags", headers=api.headers(api.read))
+    assert response.json()["error"]["code"] == "method_not_allowed"
+
+
+def test_failed_auth_audits_only_hex_prefix(api: Fixture) -> None:
+    for value in ("sk_abcdefgh_secret", "sk_abcdef01_secret", "sk_bad_secret"):
+        assert api.client.get("/v1/flags", headers={"X-API-Key": value}).status_code == 401
+    with Session(api.app.state.engine) as session:
+        prefixes = session.scalars(select(AuditLog.key_prefix).order_by(AuditLog.sequence)).all()
+    assert prefixes == [None, "abcdef01", None]
+
+
+def test_audit_head_detects_tail_truncation(api: Fixture) -> None:
+    for _ in range(2):
+        api.client.get("/v1/flags", headers=api.headers(api.read))
+    first = api.client.get("/v1/audit/verify", headers=api.headers(api.admin)).json()
+    assert first["ok"] is True
+    with Session(api.app.state.engine) as session:
+        for sequence in (3, 2):
+            session.delete(session.get(AuditLog, sequence))
+        session.commit()
+    later = api.client.get("/v1/audit/verify", headers=api.headers(api.admin)).json()
+    assert later["ok"] is True
+    assert later["entry_count"] < first["entry_count"]
+    assert later["head_hash"] != first["head_hash"]

@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import re
 import secrets
 from datetime import UTC, datetime
 
@@ -37,7 +38,11 @@ def create_key(session: Session, name: str, scopes: set[str]) -> str:
 
 def authenticate(session: Session, token: str | None) -> tuple[ApiKey | None, str | None]:
     parts = token.split("_", 2) if token else []
-    prefix = parts[1] if len(parts) == 3 and parts[0] == "sk" and len(parts[1]) == 8 else None
+    prefix = (
+        parts[1]
+        if len(parts) == 3 and parts[0] == "sk" and re.fullmatch(r"[0-9a-fA-F]{8}", parts[1])
+        else None
+    )
     key = session.scalar(select(ApiKey).where(ApiKey.prefix == prefix)) if prefix else None
     salt = key.salt if key else _DUMMY_SALT
     expected = key.key_hash if key else _DUMMY_HASH
