@@ -1,0 +1,4 @@
+# Stock Qwen 2.5 with a context window large enough for the tool results.
+FROM qwen2.5:7b
+PARAMETER num_ctx 16384
+PARAMETER temperature 0

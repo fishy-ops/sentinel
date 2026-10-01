@@ -2,32 +2,32 @@
   "sentinel-analyst:1.5b": {
     "called_get_account_stats_rate": 1.0,
     "called_get_flag_detail_rate": 1.0,
-    "claim_level_grounded_rate": 0.7179,
+    "claim_level_grounded_rate": 0.9406,
     "count": 42,
-    "decision_agreement_rate": 1.0,
+    "decision_agreement_rate": 0.9474,
     "failures_by_type": {},
-    "grounded_after_revision_rate": 0.5476,
-    "grounded_first_pass_rate": 0.5,
+    "grounded_after_revision_rate": 0.8571,
+    "grounded_first_pass_rate": 0.7619,
     "injection_pass_rate": 1.0,
-    "latency_ms_p50": 3876.45,
-    "latency_ms_p95": 5549.67,
+    "latency_ms_p50": 3621.34,
+    "latency_ms_p95": 6029.32,
     "legitimate_approve_rate": 0.0,
-    "mean_tool_calls": 3.07,
+    "mean_tool_calls": 3.57,
     "mean_ungrounded_by_reason": {
-      "not_found": 0.0952,
-      "ref_mismatch": 2.5476,
+      "not_found": 0.0476,
+      "ref_mismatch": 0.1429,
       "unknown_ref": 0.0
     },
     "per_pattern_grounded_rate": {
       "account_takeover": 0.6667,
-      "amount_spike": 0.8333,
-      "dormant_drain": 0.5,
-      "structuring": 0.0,
-      "velocity_burst": 0.8333
+      "amount_spike": 1.0,
+      "dormant_drain": 0.8333,
+      "structuring": 0.8333,
+      "velocity_burst": 1.0
     },
     "report_count": 42,
     "sparse_history_pass_rate": 1.0,
-    "tool_error_rate": 0.0078,
+    "tool_error_rate": 0.0467,
     "valid_report_rate": 1.0
   },
   "sentinel-base:1.5b": {
@@ -42,8 +42,8 @@
     "grounded_after_revision_rate": 0.0,
     "grounded_first_pass_rate": 0.0,
     "injection_pass_rate": 0.0,
-    "latency_ms_p50": 421.14,
-    "latency_ms_p95": 425.83,
+    "latency_ms_p50": 417.67,
+    "latency_ms_p95": 427.55,
     "legitimate_approve_rate": 0.0,
     "mean_tool_calls": 1.0,
     "mean_ungrounded_by_reason": {
@@ -66,31 +66,31 @@
   "sentinel-base:7b": {
     "called_get_account_stats_rate": 1.0,
     "called_get_flag_detail_rate": 1.0,
-    "claim_level_grounded_rate": 0.7869,
+    "claim_level_grounded_rate": 0.8197,
     "count": 42,
     "decision_agreement_rate": 1.0,
     "failures_by_type": {},
-    "grounded_after_revision_rate": 0.2857,
-    "grounded_first_pass_rate": 0.2143,
+    "grounded_after_revision_rate": 0.5714,
+    "grounded_first_pass_rate": 0.4048,
     "injection_pass_rate": 1.0,
-    "latency_ms_p50": 20079.93,
-    "latency_ms_p95": 24442.24,
+    "latency_ms_p50": 20214.22,
+    "latency_ms_p95": 26909.97,
     "legitimate_approve_rate": 0.0,
-    "mean_tool_calls": 4.19,
+    "mean_tool_calls": 4.26,
     "mean_ungrounded_by_reason": {
-      "not_found": 0.2381,
-      "ref_mismatch": 1.7143,
+      "not_found": 0.1905,
+      "ref_mismatch": 0.881,
       "unknown_ref": 0.0
     },
     "per_pattern_grounded_rate": {
-      "account_takeover": 0.3333,
-      "amount_spike": 0.1667,
-      "dormant_drain": 0.1667,
-      "structuring": 0.3333,
-      "velocity_burst": 0.3333
+      "account_takeover": 0.5,
+      "amount_spike": 0.3333,
+      "dormant_drain": 0.5,
+      "structuring": 0.8333,
+      "velocity_burst": 0.6667
     },
     "report_count": 42,
-    "sparse_history_pass_rate": 0.5,
+    "sparse_history_pass_rate": 1.0,
     "tool_error_rate": 0.0,
     "valid_report_rate": 1.0
   }
