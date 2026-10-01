@@ -5,6 +5,7 @@ from typing import Protocol
 
 from fastapi import FastAPI
 
+from sentinel.agent.explainer import ChatClient, HttpChatClient
 from sentinel.api.errors import install_handlers
 from sentinel.api.middleware import install_middleware
 from sentinel.api.rate import TokenBucket
@@ -23,6 +24,7 @@ def create_app(
     scorer: Scorer | None = None,
     clock: Callable[[], float] = time.monotonic,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
+    chat_client: ChatClient | None = None,
 ) -> FastAPI:
     settings = settings or Settings()
     db = make_engine(settings.database_url)
@@ -34,6 +36,7 @@ def create_app(
     app.state.engine = db
     app.state.scorer = scorer
     app.state.now = now
+    app.state.chat_client = chat_client or HttpChatClient()
     install_handlers(app)
     install_middleware(
         app, settings, db, TokenBucket(settings.rate_per_second, settings.rate_burst, clock)

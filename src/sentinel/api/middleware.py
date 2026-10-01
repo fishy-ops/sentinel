@@ -22,6 +22,8 @@ def _scope(method: str, path: str) -> str | None:
         return "admin"
     if method == "GET" and (path.startswith("/v1/accounts/") or path.startswith("/v1/flags")):
         return "read"
+    if method == "POST" and path.startswith("/v1/flags/") and path.endswith("/explain"):
+        return "read"
     return None
 
 
@@ -35,6 +37,10 @@ def _action(method: str, path: str) -> str:
     if path == "/v1/audit/verify":
         return "audit.verify"
     if path.startswith("/v1/flags"):
+        if method == "POST" and path.endswith("/explain"):
+            return "flags.explain"
+        if path.endswith("/explanation"):
+            return "flags.explanation.read"
         return "flags.read"
     return "unknown"
 

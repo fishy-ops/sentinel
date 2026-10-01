@@ -2,9 +2,11 @@ from fastapi import APIRouter, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from sentinel.agent.explainer import explain_flag
+from sentinel.agent.tools import BoundTools
 from sentinel.api.deps import EngineDep, pagination, valid_id
 from sentinel.api.errors import ApiError
-from sentinel.store.models import Flag, Transaction
+from sentinel.store.models import Explanation, Flag, Transaction
 
 router = APIRouter()
 
@@ -44,3 +46,40 @@ async def flag_detail(flag_id: int, request: Request, db: EngineDep) -> dict[str
             raise ApiError(404, "not_found", "Flag not found")
         request.state.resource_id = str(flag_id)
         return flag_dict(row)
+
+
+@router.post("/v1/flags/{flag_id}/explain")
+async def explain(flag_id: int, request: Request, db: EngineDep) -> dict[str, object]:
+    with Session(db) as session:
+        flag = session.get(Flag, flag_id)
+        if flag is None:
+            raise ApiError(404, "not_found", "Flag not found")
+        transaction = session.get(Transaction, flag.transaction_id)
+        bound = BoundTools(session, flag, transaction)
+        payload = explain_flag(bound, request.app.state.chat_client)
+        row = Explanation(
+            flag_id=flag_id,
+            model=payload["model"],
+            payload=payload,
+            created_at=request.app.state.now(),
+        )
+        session.add(row)
+        session.commit()
+        request.state.resource_id = str(flag_id)
+        return {"id": row.id, "flag_id": flag_id, **payload}
+
+
+@router.get("/v1/flags/{flag_id}/explanation")
+async def latest_explanation(flag_id: int, request: Request, db: EngineDep) -> dict[str, object]:
+    with Session(db) as session:
+        if session.get(Flag, flag_id) is None:
+            raise ApiError(404, "not_found", "Flag not found")
+        row = session.scalar(
+            select(Explanation)
+            .where(Explanation.flag_id == flag_id)
+            .order_by(Explanation.id.desc())
+        )
+        if row is None:
+            raise ApiError(404, "not_found", "Explanation not found")
+        request.state.resource_id = str(flag_id)
+        return {"id": row.id, "flag_id": flag_id, **row.payload}
