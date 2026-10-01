@@ -11,6 +11,7 @@ from sentinel.api.middleware import install_middleware
 from sentinel.api.rate import TokenBucket
 from sentinel.api.routes import accounts, audit, flags, health, transactions
 from sentinel.api.settings import Settings
+from sentinel.dashboard import routes as dashboard
 from sentinel.store.db import make_engine
 from sentinel.store.models import Flag, Transaction
 
@@ -43,4 +44,5 @@ def create_app(
     )
     for router in (transactions.router, accounts.router, flags.router, audit.router, health.router):
         app.include_router(router)
+    app.include_router(dashboard.router)
     return app

@@ -213,6 +213,18 @@ def test_history_flags_pagination_and_audit(api: Fixture) -> None:
         "/v1/accounts/acct_1/history?limit=2&offset=1", headers=api.headers(api.read)
     )
     assert [row["transaction_id"] for row in page.json()["items"]] == ["tx_1", "tx_2"]
+    before = api.client.get(
+        "/v1/accounts/acct_1/history",
+        params={"before": (NOW - timedelta(hours=1)).isoformat()},
+        headers=api.headers(api.read),
+    )
+    assert [row["transaction_id"] for row in before.json()["items"]] == ["tx_1", "tx_2"]
+    assert (
+        api.client.get(
+            "/v1/accounts/acct_1/history?before=invalid", headers=api.headers(api.read)
+        ).status_code
+        == 422
+    )
     assert (
         api.client.get(
             "/v1/accounts/acct_1/history?limit=201", headers=api.headers(api.read)
@@ -227,10 +239,10 @@ def test_history_flags_pagination_and_audit(api: Fixture) -> None:
     checked = api.client.get("/v1/audit/verify", headers=api.headers(api.admin))
     assert checked.json()["ok"] is True
     assert checked.json()["first_broken_entry_id"] is None
-    assert checked.json()["entry_count"] == 7
+    assert checked.json()["entry_count"] == 9
     with Session(api.app.state.engine) as session:
         rows = session.scalars(select(AuditLog).order_by(AuditLog.sequence)).all()
-        assert len(rows) == 8
+        assert len(rows) == 10
         assert checked.json()["head_hash"] == rows[-2].entry_hash
         prior_head = rows[-1].entry_hash
         assert all(row.entry_hash and row.prev_hash for row in rows)
@@ -244,7 +256,7 @@ def test_history_flags_pagination_and_audit(api: Fixture) -> None:
     checked = api.client.get("/v1/audit/verify", headers=api.headers(api.admin))
     assert checked.json()["ok"] is False
     assert checked.json()["first_broken_entry_id"] == 3
-    assert checked.json()["entry_count"] == 8
+    assert checked.json()["entry_count"] == 10
     assert checked.json()["head_hash"] == prior_head
 
 

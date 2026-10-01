@@ -275,6 +275,11 @@ def explain_flag(
         explanation = grounding = None
     return {
         "explanation": explanation.model_dump() if explanation else None,
+        "cited_records": {
+            record["ref"]: record
+            for result in bound.results
+            for record in result.get("records", [])
+        },
         "grounding": grounding,
         "grounded": bool(grounding and grounding["grounded"]),
         "first_pass_grounded": bool(first_pass and first_pass["grounded"]),

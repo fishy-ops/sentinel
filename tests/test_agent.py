@@ -373,6 +373,7 @@ def test_explanation_api_and_audit(tmp_path: Path) -> None:
         response = http.post(f"/v1/flags/{flag_id}/explain", headers=headers)
         assert response.status_code == 200
         assert response.json()["grounded"] is True
+        assert response.json()["cited_records"]["tx1"]["ref"] == "tx1"
         assert (
             http.get(f"/v1/flags/{flag_id}/explanation", headers=headers).json() == response.json()
         )

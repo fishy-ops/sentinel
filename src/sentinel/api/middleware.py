@@ -71,7 +71,11 @@ def install_middleware(app: FastAPI, settings: Settings, db: Engine, limiter: To
         request.state.request_id = str(uuid.uuid4())
         request.state.resource_id = None
         path = request.url.path
-        if path == "/v1/healthz":
+        if (
+            path == "/v1/healthz"
+            or path == "/"
+            or path in {"/assets/dashboard.css", "/assets/dashboard.js"}
+        ):
             response = await call_next(request)
             response.headers["X-Request-ID"] = request.state.request_id
             return response

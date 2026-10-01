@@ -6,12 +6,15 @@ from sentinel.agent.explainer import explain_flag
 from sentinel.agent.tools import BoundTools
 from sentinel.api.deps import EngineDep, pagination, valid_id
 from sentinel.api.errors import ApiError
+from sentinel.api.routes.accounts import transaction_dict
 from sentinel.store.models import Explanation, Flag, Transaction
 
 router = APIRouter()
 
 
-def flag_dict(row: Flag) -> dict[str, object]:
+def flag_dict(
+    row: Flag, transaction: Transaction, explanation: Explanation | None
+) -> dict[str, object]:
     return {
         "id": row.id,
         "transaction_id": row.transaction_id,
@@ -19,6 +22,15 @@ def flag_dict(row: Flag) -> dict[str, object]:
         "reasons": row.reasons,
         "model_version": row.model_version,
         "created_at": row.created_at.isoformat(),
+        "transaction": {
+            "id": transaction.id,
+            "account": transaction.account_id,
+            **transaction_dict(transaction),
+        },
+        "explanation": {
+            "exists": explanation is not None,
+            "grounded": bool(explanation and explanation.payload.get("grounded")),
+        },
     }
 
 
@@ -26,16 +38,37 @@ def flag_dict(row: Flag) -> dict[str, object]:
 async def flags(request: Request, db: EngineDep) -> dict[str, object]:
     limit, offset = pagination(request)
     account_id = request.query_params.get("account_id")
+    min_score_text = request.query_params.get("min_score")
+    try:
+        min_score = float(min_score_text) if min_score_text is not None else 0.0
+    except ValueError:
+        raise ApiError(422, "validation_error", "Invalid fields: min_score") from None
+    if not 0 <= min_score <= 1 or min_score != min_score:
+        raise ApiError(422, "validation_error", "Invalid fields: min_score")
     if account_id is not None:
         valid_id(account_id, "account_id")
     with Session(db) as session:
-        query = select(Flag)
+        query = select(Flag, Transaction).join(Transaction).where(Flag.score >= min_score)
         if account_id is not None:
-            query = query.join(Transaction).where(Transaction.account_id == account_id)
-        rows = session.scalars(
+            query = query.where(Transaction.account_id == account_id)
+        rows = session.execute(
             query.order_by(Flag.created_at.desc(), Flag.id.desc()).limit(limit).offset(offset)
         ).all()
-        return {"items": [flag_dict(row) for row in rows], "limit": limit, "offset": offset}
+        latest = {
+            row.flag_id: row
+            for row in session.scalars(
+                select(Explanation)
+                .where(Explanation.flag_id.in_([flag.id for flag, _ in rows]))
+                .order_by(Explanation.id)
+            )
+        }
+        return {
+            "items": [
+                flag_dict(flag, transaction, latest.get(flag.id)) for flag, transaction in rows
+            ],
+            "limit": limit,
+            "offset": offset,
+        }
 
 
 @router.get("/v1/flags/{flag_id}")
@@ -45,7 +78,13 @@ async def flag_detail(flag_id: int, request: Request, db: EngineDep) -> dict[str
         if row is None:
             raise ApiError(404, "not_found", "Flag not found")
         request.state.resource_id = str(flag_id)
-        return flag_dict(row)
+        transaction = session.get(Transaction, row.transaction_id)
+        explanation = session.scalar(
+            select(Explanation)
+            .where(Explanation.flag_id == flag_id)
+            .order_by(Explanation.id.desc())
+        )
+        return flag_dict(row, transaction, explanation)
 
 
 @router.post("/v1/flags/{flag_id}/explain")

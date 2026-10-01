@@ -1,10 +1,11 @@
-from datetime import UTC
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from sentinel.api.deps import EngineDep, pagination, valid_id
+from sentinel.api.errors import ApiError
 from sentinel.store.models import Transaction
 
 router = APIRouter()
@@ -31,11 +32,22 @@ async def history(account_id: str, request: Request, db: EngineDep) -> dict[str,
     valid_id(account_id, "account_id")
     request.state.resource_id = account_id
     limit, offset = pagination(request)
+    before_text = request.query_params.get("before")
+    before = None
+    if before_text is not None:
+        try:
+            before = datetime.fromisoformat(before_text)
+        except ValueError:
+            raise ApiError(422, "validation_error", "Invalid fields: before") from None
+        if before.tzinfo is None or before.utcoffset() is None:
+            raise ApiError(422, "validation_error", "Invalid fields: before")
+        before = before.astimezone(UTC)
     with Session(db) as session:
+        query = select(Transaction).where(Transaction.account_id == account_id)
+        if before is not None:
+            query = query.where(Transaction.timestamp <= before)
         rows = session.scalars(
-            select(Transaction)
-            .where(Transaction.account_id == account_id)
-            .order_by(Transaction.timestamp.desc(), Transaction.id.desc())
+            query.order_by(Transaction.timestamp.desc(), Transaction.id.desc())
             .limit(limit)
             .offset(offset)
         ).all()
