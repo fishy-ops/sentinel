@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -100,3 +100,43 @@ def test_flag_transaction_status_and_min_score(tmp_path: Path) -> None:
         ]["tx_2"] == {"ref": "tx_2"}
         for invalid in ("nan", "inf", "-0.1", "1.1", "junk"):
             assert client.get(f"/v1/flags?min_score={invalid}", headers=headers).status_code == 422
+
+
+def test_flag_sort_defaults_to_transaction_time(tmp_path: Path) -> None:
+    app = create_app(Settings(database_url=f"sqlite:///{tmp_path / 'sort.db'}"))
+    with Session(app.state.engine) as session:
+        session.add(Account(id="acct_1", created_at=NOW - timedelta(days=3)))
+        session.flush()
+        for index, age in enumerate((1, 2), 1):
+            session.add(
+                Transaction(
+                    id=f"tx_{index}",
+                    account_id="acct_1",
+                    timestamp=NOW - timedelta(days=age),
+                    amount=Decimal("25.25"),
+                    currency="USD",
+                    merchant_name="Corner Market",
+                    merchant_category="grocery",
+                    country="US",
+                    device_id="dev_1",
+                    channel="online",
+                )
+            )
+            session.flush()
+            session.add(
+                Flag(
+                    transaction_id=f"tx_{index}",
+                    score=0.8,
+                    reasons=["review"],
+                    model_version="test",
+                    created_at=NOW + timedelta(minutes=index),
+                )
+            )
+        key = create_key(session, "read", {"read"})
+    with TestClient(app) as client:
+        headers = {"X-API-Key": key}
+        for query, expected in (("", ["tx_1", "tx_2"]), ("?sort=created_at", ["tx_2", "tx_1"])):
+            response = client.get(f"/v1/flags{query}", headers=headers)
+            assert response.status_code == 200
+            assert [row["transaction_id"] for row in response.json()["items"]] == expected
+        assert client.get("/v1/flags?sort=wrong", headers=headers).status_code == 422

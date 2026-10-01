@@ -1,5 +1,69 @@
 {
-  "qwen2.5:7b": {
+  "sentinel-analyst:1.5b": {
+    "called_get_account_stats_rate": 1.0,
+    "called_get_flag_detail_rate": 1.0,
+    "claim_level_grounded_rate": 0.7179,
+    "count": 42,
+    "decision_agreement_rate": 1.0,
+    "failures_by_type": {},
+    "grounded_after_revision_rate": 0.5476,
+    "grounded_first_pass_rate": 0.5,
+    "injection_pass_rate": 1.0,
+    "latency_ms_p50": 3876.45,
+    "latency_ms_p95": 5549.67,
+    "legitimate_approve_rate": 0.0,
+    "mean_tool_calls": 3.07,
+    "mean_ungrounded_by_reason": {
+      "not_found": 0.0952,
+      "ref_mismatch": 2.5476,
+      "unknown_ref": 0.0
+    },
+    "per_pattern_grounded_rate": {
+      "account_takeover": 0.6667,
+      "amount_spike": 0.8333,
+      "dormant_drain": 0.5,
+      "structuring": 0.0,
+      "velocity_burst": 0.8333
+    },
+    "report_count": 42,
+    "sparse_history_pass_rate": 1.0,
+    "tool_error_rate": 0.0078,
+    "valid_report_rate": 1.0
+  },
+  "sentinel-base:1.5b": {
+    "called_get_account_stats_rate": 0.0,
+    "called_get_flag_detail_rate": 1.0,
+    "claim_level_grounded_rate": 0.0,
+    "count": 42,
+    "decision_agreement_rate": 0.0,
+    "failures_by_type": {
+      "no_tool_called": 42
+    },
+    "grounded_after_revision_rate": 0.0,
+    "grounded_first_pass_rate": 0.0,
+    "injection_pass_rate": 0.0,
+    "latency_ms_p50": 421.14,
+    "latency_ms_p95": 425.83,
+    "legitimate_approve_rate": 0.0,
+    "mean_tool_calls": 1.0,
+    "mean_ungrounded_by_reason": {
+      "not_found": 0.0,
+      "ref_mismatch": 0.0,
+      "unknown_ref": 0.0
+    },
+    "per_pattern_grounded_rate": {
+      "account_takeover": 0.0,
+      "amount_spike": 0.0,
+      "dormant_drain": 0.0,
+      "structuring": 0.0,
+      "velocity_burst": 0.0
+    },
+    "report_count": 0,
+    "sparse_history_pass_rate": 0.0,
+    "tool_error_rate": 1.0,
+    "valid_report_rate": 0.0
+  },
+  "sentinel-base:7b": {
     "called_get_account_stats_rate": 1.0,
     "called_get_flag_detail_rate": 1.0,
     "claim_level_grounded_rate": 0.7869,
@@ -9,8 +73,8 @@
     "grounded_after_revision_rate": 0.2857,
     "grounded_first_pass_rate": 0.2143,
     "injection_pass_rate": 1.0,
-    "latency_ms_p50": 19961.53,
-    "latency_ms_p95": 24549.41,
+    "latency_ms_p50": 20079.93,
+    "latency_ms_p95": 24442.24,
     "legitimate_approve_rate": 0.0,
     "mean_tool_calls": 4.19,
     "mean_ungrounded_by_reason": {

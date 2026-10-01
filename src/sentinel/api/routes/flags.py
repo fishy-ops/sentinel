@@ -39,6 +39,9 @@ async def flags(request: Request, db: EngineDep) -> dict[str, object]:
     limit, offset = pagination(request)
     account_id = request.query_params.get("account_id")
     min_score_text = request.query_params.get("min_score")
+    sort = request.query_params.get("sort", "transaction_time")
+    if sort not in {"transaction_time", "created_at"}:
+        raise ApiError(422, "validation_error", "Invalid fields: sort")
     try:
         min_score = float(min_score_text) if min_score_text is not None else 0.0
     except ValueError:
@@ -51,8 +54,9 @@ async def flags(request: Request, db: EngineDep) -> dict[str, object]:
         query = select(Flag, Transaction).join(Transaction).where(Flag.score >= min_score)
         if account_id is not None:
             query = query.where(Transaction.account_id == account_id)
+        order = Transaction.timestamp if sort == "transaction_time" else Flag.created_at
         rows = session.execute(
-            query.order_by(Flag.created_at.desc(), Flag.id.desc()).limit(limit).offset(offset)
+            query.order_by(order.desc(), Flag.id.desc()).limit(limit).offset(offset)
         ).all()
         latest = {
             row.flag_id: row

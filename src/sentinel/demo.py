@@ -19,6 +19,26 @@ from sentinel.store.db import make_engine
 from sentinel.store.models import Explanation, Flag, Transaction
 
 
+def report_candidates(session: Session, count: int) -> list[tuple[Flag, Transaction]]:
+    if count <= 0:
+        return []
+    rows = session.execute(
+        select(Flag, Transaction)
+        .join(Transaction)
+        .order_by(Transaction.timestamp.desc(), Flag.id.desc())
+    )
+    seen: set[str] = set()
+    candidates = []
+    for flag, transaction in rows:
+        if transaction.account_id in seen:
+            continue
+        seen.add(transaction.account_id)
+        candidates.append((flag, transaction))
+        if len(candidates) >= count:
+            break
+    return candidates
+
+
 def prepare(root: Path, explain_count: int = 0) -> tuple[str, str, int]:
     data_root = root / "data/generated"
     for split in ("train", "val", "eval", "finetune"):
@@ -50,13 +70,13 @@ def prepare(root: Path, explain_count: int = 0) -> tuple[str, str, int]:
             print("Report precomputation skipped: model endpoint is unreachable.", flush=True)
         else:
             with Session(engine) as session:
-                seen: set[str] = set()
-                flags = session.scalars(select(Flag).order_by(Flag.id)).all()
-                for flag in flags:
-                    transaction = session.get(Transaction, flag.transaction_id)
-                    if transaction.account_id in seen:
-                        continue
-                    seen.add(transaction.account_id)
+                for position, (flag, transaction) in enumerate(
+                    report_candidates(session, explain_count), 1
+                ):
+                    print(
+                        f"Generating report {position}/{explain_count} for flag {flag.id}…",
+                        flush=True,
+                    )
                     payload = explain_flag(BoundTools(session, flag, transaction), client)
                     session.add(
                         Explanation(
@@ -67,10 +87,11 @@ def prepare(root: Path, explain_count: int = 0) -> tuple[str, str, int]:
                         )
                     )
                     session.commit()
-                    if payload["failure"]:
-                        print(f"Report for flag {flag.id}: {payload['failure']}", flush=True)
-                    if len(seen) >= explain_count:
-                        break
+                    result = payload["failure"] or "saved"
+                    print(
+                        f"Report {position}/{explain_count} for flag {flag.id}: {result}",
+                        flush=True,
+                    )
     print(f"Seeded {flag_count} flags.", flush=True)
     return read_key, ingest_key, flag_count
 
