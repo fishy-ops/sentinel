@@ -17,11 +17,12 @@ dependencies = [
     "scikit-learn",
     "numpy",
     "pandas",
+    "joblib",
     "httpx",
 ]
 
 [dependency-groups]
-dev = ["pytest", "ruff"]
+dev = ["pytest", "ruff", "matplotlib"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
