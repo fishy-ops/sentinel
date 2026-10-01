@@ -1053,6 +1053,7 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "scikit-learn" },
     { name = "sqlalchemy" },
+    { name = "threadpoolctl" },
     { name = "uvicorn" },
 ]
 
@@ -1075,6 +1076,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2" },
     { name = "scikit-learn" },
     { name = "sqlalchemy", specifier = ">=2" },
+    { name = "threadpoolctl", specifier = ">=3.7.0" },
     { name = "uvicorn" },
 ]
 

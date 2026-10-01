@@ -4,6 +4,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
+from threadpoolctl import threadpool_limits
+
 from sentinel.detect.features import transaction_features
 from sentinel.detect.iforest import ForestModel
 from sentinel.detect.rules import evaluate_rules
@@ -97,7 +99,9 @@ class CombinedScorer:
         return Detection(flagged, score, reasons, version)
 
     def score(self, transaction: Transaction, history: list[Transaction]) -> Flag | None:
-        result = self.detect(transaction_features(transaction, history))
+        # One row at a time: worker threads cost far more than they save.
+        with threadpool_limits(limits=1):
+            result = self.detect(transaction_features(transaction, history))
         if not result.flagged:
             return None
         return Flag(

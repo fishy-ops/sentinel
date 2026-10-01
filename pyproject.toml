@@ -19,6 +19,7 @@ dependencies = [
     "pandas",
     "joblib",
     "httpx",
+    "threadpoolctl>=3.7.0",
 ]
 
 [dependency-groups]
