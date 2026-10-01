@@ -37,7 +37,7 @@ REPORT_PROMPT = """Write the report as JSON.
 the account's normal behaviour.
 - evidence: 2 to 6 items. Each has one factual `claim` and the `refs` of the records that \
 show it. Facts about the flagged transaction itself (amount, time, weekday, country, device, \
-merchant) must cite the flagged transaction's own ref. Anything the summary states must also \
+merchant) must cite `flagged_transaction`. Anything the summary states must also \
 appear in an evidence item.
 - risk_level: low, medium, or high.
 - recommended_action: approve, review, or block_and_contact.

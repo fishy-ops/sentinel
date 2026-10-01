@@ -19,6 +19,8 @@ from sentinel.detect.features import REPORTING_THRESHOLD, transaction_features
 from sentinel.store.models import Flag, Transaction
 
 MAX_TEXT = 120
+# The flagged transaction is always cited under this fixed ref; other transactions by their id.
+FLAGGED_REF = "flagged_transaction"
 _NUMBER = re.compile(r"\d[\d,]*(?:\.\d+)?")
 
 # Detector signals worth showing an analyst, with the wording the model sees.
@@ -52,10 +54,11 @@ def _utc(value: datetime) -> datetime:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
-def _transaction(row: Transaction) -> dict[str, Any]:
+def _transaction(row: Transaction, ref: str | None = None) -> dict[str, Any]:
     when = _utc(row.timestamp)
     return {
-        "ref": row.id,
+        "ref": ref or row.id,
+        "transaction_id": row.id,
         "timestamp": when.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "weekday": when.strftime("%A"),
         "amount": _round(row.amount),
@@ -114,7 +117,7 @@ class BoundTools:
     def _tool_get_flag_detail(self) -> list[dict[str, Any]]:
         features = transaction_features(self.transaction, self._history())
         records: list[dict[str, Any]] = [
-            _transaction(self.transaction),
+            _transaction(self.transaction, FLAGGED_REF),
             {"ref": "flag.score", "value": _round(self.flag.score), "meaning": "risk score 0-1"},
         ]
         for index, reason in enumerate(self.flag.reasons):
