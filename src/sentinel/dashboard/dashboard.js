@@ -1,5 +1,105 @@
 "use strict";
 
+const reasonFormatting = (() => {
+  const number = (value, digits = 1) => Number(value).toLocaleString("en-US", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+  const count = (value) => number(Math.round(Number(value)), 0);
+  const transactions = (value) => `${count(value)} ${Math.round(Number(value)) === 1 ? "transaction" : "transactions"}`;
+  const currencyAmount = (value, currency) => `${number(value, 2)} ${currency}`.trim();
+  const duration = (seconds) => {
+    const elapsed = Number(seconds);
+    const [value, unit] = elapsed >= 86400 ? [elapsed / 86400, "day"]
+      : elapsed >= 3600 ? [elapsed / 3600, "hour"]
+        : elapsed >= 60 ? [elapsed / 60, "minute"] : [elapsed, "second"];
+    const rounded = Math.round(value * 10) / 10;
+    return `${number(rounded, Number.isInteger(rounded) ? 0 : 1)} ${unit}${rounded === 1 ? "" : "s"}`;
+  };
+  const previous = (value, window) => `${transactions(value)} in the previous ${window}`;
+  const spent = (value, currency, window) => `${currencyAmount(value, currency)} spent in the previous ${window}`;
+
+  const featureFormatters = {
+    amount: (value, currency) => `Transaction amount: ${currencyAmount(value, currency)}`,
+    account_age: (value) => `${count(value)} earlier ${Math.round(Number(value)) === 1 ? "transaction" : "transactions"} on the account`,
+    amount_zscore: (value) => Number(value) === 0 ? "At the account's average amount" : `${number(Math.abs(value))} standard deviations ${Number(value) < 0 ? "below" : "above"} the account's average amount`,
+    amount_to_p95: (value) => `${number(value)}× the account's 95th-percentile amount`,
+    amount_to_median: (value) => `${number(value)}× the account's median amount`,
+    count_10m: (value) => previous(value, "10 minutes"),
+    count_1h: (value) => previous(value, "hour"),
+    count_24h: (value) => previous(value, "24 hours"),
+    sum_10m: (value, currency) => spent(value, currency, "10 minutes"),
+    sum_1h: (value, currency) => spent(value, currency, "hour"),
+    sum_24h: (value, currency) => spent(value, currency, "24 hours"),
+    seconds_since_previous: (value) => `${duration(value)} since the previous transaction`,
+    days_since_activity: (value) => `${duration(Number(value) * 86400)} since the previous transaction`,
+    is_new_device: (value) => Number(value) ? "New device" : null,
+    is_new_country: (value) => Number(value) ? "New country" : null,
+    is_new_merchant: (value) => Number(value) ? "New merchant" : null,
+    device_seen_count: (value) => `Device used in ${transactions(value)} before`,
+    country_seen_count: (value) => `Country seen in ${transactions(value)} before`,
+    device_age_hours: (value) => `${duration(Number(value) * 3600)} since this device was first used`,
+    country_age_hours: (value) => `${duration(Number(value) * 3600)} since this country was first seen`,
+    new_device_count_24h: (value) => `${count(value)} new ${Math.round(Number(value)) === 1 ? "device" : "devices"} in the previous 24 hours`,
+    hour_deviation: (value) => `${duration(Number(value) * 3600)} outside the account's usual transaction time`,
+    is_online: (value) => Number(value) ? "Online purchase" : null,
+    is_transfer: (value) => Number(value) ? "Transfer" : null,
+    near_threshold: (value) => Number(value) ? "Amount just under the reporting threshold" : null,
+    near_threshold_transfers_7d: (value) => `${transactions(value)} just under the reporting threshold in the previous 7 days`,
+    usual_max_10m: (value) => `Busiest 10 minutes on record: ${transactions(value)}`,
+  };
+
+  function formatRule(reason) {
+    let match = /^velocity: (\d+) transactions in 10 minutes \(usual max (\d+)\)$/.exec(reason);
+    if (match) return [`${transactions(match[1])} within 10 minutes (previous maximum ${count(match[2])})`];
+
+    match = /^account takeover: device and country first seen within 24 hours; (\d+) supporting signals, amount (-?\d+(?:\.\d+)?)x prior median$/.exec(reason);
+    if (match) {
+      const signals = ["New device and country within 24 hours", `${count(match[1])} supporting signals`];
+      if (Number(match[2]) > 0) signals.push(`Amount: ${number(match[2])}× the account's median amount`);
+      return signals;
+    }
+
+    match = /^amount spike: (-?\d+(?:\.\d+)?)x prior p95 on \$\d+(?:\.\d+)?$/.exec(reason);
+    if (match) return [`Amount is ${number(match[1])}× the account's 95th-percentile amount`];
+
+    match = /^structuring: \$\d+(?:\.\d+)? transfer below \$10000; (\d+) prior near-threshold transfers in 7 days$/.exec(reason);
+    if (match) return [
+      "Transfer just under the 10,000 reporting threshold",
+      `${count(match[1])} similar ${Number(match[1]) === 1 ? "transfer" : "transfers"} in the past 7 days`,
+    ];
+
+    match = /^dormant drain: transfer after (-?\d+(?:\.\d+)?) inactive days at (-?\d+(?:\.\d+)?)x prior p95$/.exec(reason);
+    if (match) return [`Transfer after ${number(match[1], Number.isInteger(Number(match[1])) ? 0 : 1)} inactive days at ${number(match[2])}× the 95th-percentile amount`];
+
+    return null;
+  }
+
+  function readableReason(reason, currency = "") {
+    const separator = reason.indexOf(": ");
+    const prefix = separator < 0 ? "" : reason.slice(0, separator);
+    if (prefix !== "forest model" && prefix !== "supervised model") {
+      return { source: "Rule", signals: formatRule(reason) || [reason] };
+    }
+    const source = prefix === "forest model" ? "Anomaly model" : "Supervised model";
+    const signals = reason.slice(separator + 2).split(", ").map((part) => {
+      if (part === "multiple features") return "Multiple unusual transaction signals";
+      if (part === "transaction profile") return "Transaction profile differs from usual activity";
+      const match = /^(.+) (-?\d+(?:\.\d+)?)$/.exec(part);
+      if (!match) return part;
+      const feature = match[1].replaceAll(" ", "_");
+      const formatter = featureFormatters[feature];
+      return formatter ? formatter(match[2], currency) : part;
+    }).filter(Boolean);
+    return { source, signals: signals.length ? signals : ["Transaction profile differs from usual activity"] };
+  }
+
+  return { featureFormatters, readableReason };
+})();
+
+if (typeof module !== "undefined") module.exports = reasonFormatting;
+
+if (typeof document !== "undefined") {
 const $ = (id) => document.getElementById(id);
 const svgNS = "http://www.w3.org/2000/svg";
 const pageSize = 20;
@@ -10,70 +110,13 @@ let selected = null;
 let timeline = [];
 let accountFlags = [];
 
-const featureLabels = {
-  amount: "purchase amount",
-  account_age: "prior transactions",
-  amount_zscore: "standard deviations above usual spend",
-  amount_to_p95: "times the prior 95th percentile amount",
-  amount_to_median: "times the prior median amount",
-  count_10m: "transactions in the last 10 minutes",
-  count_1h: "transactions in the last hour",
-  count_24h: "transactions in the last 24 hours",
-  sum_10m: "spend in the last 10 minutes",
-  sum_1h: "spend in the last hour",
-  sum_24h: "spend in the last 24 hours",
-  seconds_since_previous: "seconds since the previous transaction",
-  days_since_activity: "days since the previous transaction",
-  is_new_device: "new device",
-  is_new_country: "new country",
-  is_new_merchant: "new merchant",
-  device_seen_count: "times this device was used before",
-  country_seen_count: "times this country was seen before",
-  device_age_hours: "hours since this device was first used",
-  country_age_hours: "hours since this country was first seen",
-  new_device_count_24h: "new devices in the last 24 hours",
-  hour_deviation: "hours outside the usual transaction time",
-  is_online: "online purchase",
-  is_transfer: "bank transfer",
-  near_threshold: "near the reporting threshold",
-  near_threshold_transfers_7d: "near-threshold transfers in the last 7 days",
-  usual_max_10m: "usual maximum transactions in 10 minutes",
-};
-const booleanFeatures = new Set([
-  "is_new_device", "is_new_country", "is_new_merchant", "is_online", "is_transfer", "near_threshold",
-]);
-
-function readableReason(reason) {
-  const separator = reason.indexOf(": ");
-  const source = separator < 0 ? "Rule" : ({
-    "forest model": "Anomaly model",
-    "supervised model": "Supervised model",
-  }[reason.slice(0, separator)] || "Rule");
-  if (separator < 0 || source === "Rule") {
-    return { source, text: separator < 0 ? reason : reason.slice(separator + 2) };
-  }
-  const text = reason.slice(separator + 2).split(", ").map((part) => {
-    const match = /^(.*) (-?\d+(?:\.\d+)?)$/.exec(part);
-    if (!match) return part.replaceAll("_", " ");
-    const [, feature, value] = match;
-    const label = featureLabels[feature] || feature.replaceAll("_", " ");
-    if (booleanFeatures.has(feature)) return Number(value) ? label : `not ${label}`;
-    if (feature === "account_age") return `${Number(value)} ${label}`;
-    if (feature === "device_seen_count" || feature === "country_seen_count") {
-      return `${feature === "device_seen_count" ? "device used" : "country seen"} ${Number(value)} times before`;
-    }
-    return `${label} ${value}`;
-  }).join(" · ");
-  return { source, text };
-}
-
-function reasonNode(reason, tag = "li") {
-  const readable = readableReason(reason);
-  const node = element(tag, "reason-item");
-  const label = element("span", "reason-source", readable.source);
-  const text = element("span", "reason-text", readable.text);
-  text.title = readable.text;
-  node.append(label, text);
+function reasonNode(reason, currency) {
+  const readable = reasonFormatting.readableReason(reason, currency);
+  const node = element("li", "reason-item");
+  node.append(element("span", "reason-source", readable.source));
+  const signals = element("div", "reason-signals");
+  for (const signal of readable.signals) signals.append(element("span", "reason-signal", signal));
+  node.append(signals);
   return node;
 }
 
@@ -164,9 +207,9 @@ function drawQueue() {
     const middle = element("div", "queue-middle");
     middle.append(element("b", "", money(transaction)), element("span", "", shortDate(transaction.timestamp)));
     const bottom = element("div", "queue-bottom");
-    const summary = readableReason(flag.reasons[0] || "Flagged for review");
-    const reason = element("span", "queue-reason", `${summary.source} · ${summary.text}`);
-    reason.title = `${summary.source} · ${summary.text}`;
+    const summary = reasonFormatting.readableReason(flag.reasons[0] || "Flagged for review", transaction.currency);
+    const reason = element("span", "queue-reason", `${summary.source} · ${summary.signals.join(" · ")}`);
+    reason.title = reason.textContent;
     bottom.append(reason);
     const badge = element("span", "report-badge", reportBadge(flag.explanation));
     if (flag.explanation.exists && !flag.explanation.grounded) badge.classList.add("unverified");
@@ -335,11 +378,12 @@ function recordText(record) {
   }
   if (record.meaning) return `${record.meaning}: ${record.value}`;
   if (record.reasons) {
-    const reasons = record.reasons.map((reason) => readableReason(reason).text).join("; ");
+    const currency = record.currency || selected?.transaction.currency;
+    const reasons = record.reasons.map((reason) => reasonFormatting.readableReason(reason, currency).signals.join(" · ")).join("; ");
     return `${shortDate(record.timestamp)} · score ${Math.round(record.score * 100)}% · ${reasons}`;
   }
   if (typeof record.value === "string" && record.ref.startsWith("flag.reason.")) {
-    return readableReason(record.value).text;
+    return reasonFormatting.readableReason(record.value, record.currency || selected?.transaction.currency).signals.join(" · ");
   }
   if (record.value !== undefined) {
     const label = record.ref.split(".").slice(1).join(" ").replaceAll("_", " ");
@@ -448,7 +492,7 @@ async function selectFlag(flag) {
   $("detail-subtitle").textContent = `${flag.transaction.account_id} · ${flag.transaction.transaction_id}`;
   $("detail-score").textContent = `${Math.round(flag.score * 100)}% score`;
   drawFacts(flag.transaction);
-  $("reasons").replaceChildren(...flag.reasons.map((reason) => reasonNode(reason)));
+  $("reasons").replaceChildren(...flag.reasons.map((reason) => reasonNode(reason, flag.transaction.currency)));
   message($("detail-message"), "Loading account context…");
   $("chart").replaceChildren(element("p", "muted", "Loading account activity…"));
   drawReport(null, true);
@@ -545,3 +589,4 @@ if (key) {
   loadQueue();
   checkAudit();
 } else showSignIn();
+}

@@ -1,3 +1,4 @@
+import re
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -8,6 +9,7 @@ from sqlalchemy.orm import Session
 from sentinel.api.app import create_app
 from sentinel.api.auth import create_key
 from sentinel.api.settings import Settings
+from sentinel.detect.features import FEATURE_NAMES
 from sentinel.store.models import Account, Explanation, Flag, Transaction
 
 NOW = datetime(2026, 10, 1, tzinfo=UTC)
@@ -32,6 +34,8 @@ def test_dashboard_assets_are_public_and_hardened(tmp_path: Path) -> None:
             assert response.headers["referrer-policy"] == "no-referrer"
         assert "sk_" not in client.get("/").text
         script = client.get("/assets/dashboard.js").text
+        mapped = set(re.findall(r"^    ([a-z0-9_]+): \(value", script, re.MULTILINE))
+        assert mapped == set(FEATURE_NAMES)
         for sink in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
             assert sink not in script
 
