@@ -97,7 +97,73 @@ const reasonFormatting = (() => {
   return { featureFormatters, readableReason };
 })();
 
-if (typeof module !== "undefined") module.exports = reasonFormatting;
+const chartMath = (() => {
+  const positive = (values) => values.map(Number).filter((value) => Number.isFinite(value) && value > 0);
+  function scaleChoice(values) {
+    const amounts = positive(values);
+    return amounts.length && Math.max(...amounts) / Math.min(...amounts) > 20 ? "log" : "linear";
+  }
+  function niceTicks(values, scale = scaleChoice(values)) {
+    const amounts = positive(values);
+    if (!amounts.length) return [];
+    const min = Math.min(...amounts), max = Math.max(...amounts);
+    if (scale === "log") {
+      const ticks = [];
+      for (let power = Math.floor(Math.log10(min)); power <= Math.ceil(Math.log10(max)); power++) ticks.push(10 ** power);
+      return ticks;
+    }
+    if (min === max) return min === 0 ? [0, 1] : [Math.max(0, min * 0.5), min, min * 1.5];
+    const rough = (max - min) / 4;
+    const magnitude = 10 ** Math.floor(Math.log10(rough));
+    const step = [1, 2, 5, 10].find((multiple) => multiple * magnitude >= rough) * magnitude;
+    const ticks = [];
+    for (let index = Math.floor(min / step); index <= Math.ceil(max / step); index++) ticks.push(Number((index * step).toPrecision(12)));
+    return ticks;
+  }
+  function percentile(values, fraction) {
+    const sorted = positive(values).sort((a, b) => a - b);
+    if (!sorted.length) return null;
+    const position = Math.max(0, Math.min(1, fraction)) * (sorted.length - 1);
+    const lower = Math.floor(position);
+    return sorted[lower] + (sorted[Math.ceil(position)] - sorted[lower]) * (position - lower);
+  }
+  function dateTicks(start, end) {
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return [];
+    const day = 86400000;
+    const span = end - start;
+    const candidates = span < 2 * day
+      ? [5, 15, 30, 60, 120, 180, 360, 720, 1440].map((minutes) => minutes / 1440)
+      : span < 14 * day ? [1, 2, 3, 7] : [7, 14, 28, 30, 60, 90, 180, 365];
+    let best = [];
+    let distance = Infinity;
+    for (const days of candidates) {
+      const ticks = [];
+      if (days < 28) {
+        const boundary = days >= 7 ? Date.UTC(1970, 0, 5) : 0;
+        const interval = days * day;
+        for (let time = Math.ceil((start - boundary) / interval) * interval + boundary; time <= end; time += interval) ticks.push(time);
+      } else {
+        const months = days >= 365 ? 12 : days >= 180 ? 6 : days >= 90 ? 3 : days >= 60 ? 2 : 1;
+        const first = new Date(start);
+        for (let year = first.getUTCFullYear(); year <= new Date(end).getUTCFullYear() + 1; year++) {
+          for (let month = 0; month < 12; month += months) {
+            const time = Date.UTC(year, month, 1);
+            if (time >= start && time <= end) ticks.push(time);
+          }
+        }
+      }
+      const score = Math.abs(ticks.length - 5) + (ticks.length < 4 ? 2 : 0) + (ticks.length > 6 ? 2 : 0);
+      if (score < distance) { best = ticks; distance = score; }
+    }
+    return best;
+  }
+  function labelPlacement(x, width, labelWidth, left = 72, right = 16) {
+    return Math.max(left, Math.min(x + 9, width - right - labelWidth));
+  }
+  return { scaleChoice, niceTicks, percentile, dateTicks, labelPlacement };
+})();
+
+if (typeof module !== "undefined") module.exports = { ...reasonFormatting, ...chartMath };
 
 if (typeof document !== "undefined") {
 const $ = (id) => document.getElementById(id);
@@ -109,14 +175,14 @@ let items = [];
 let selected = null;
 let timeline = [];
 let accountFlags = [];
+let activeReference = null;
 
 function reasonNode(reason, currency) {
   const readable = reasonFormatting.readableReason(reason, currency);
   const node = element("li", "reason-item");
-  node.append(element("span", "reason-source", readable.source));
-  const signals = element("div", "reason-signals");
-  for (const signal of readable.signals) signals.append(element("span", "reason-signal", signal));
-  node.append(signals);
+  const source = readable.source === "Rule" && reason.includes(": ")
+    ? reason.split(": ")[0].replace(/^./, (letter) => letter.toUpperCase()) : readable.source;
+  node.append(element("span", "reason-source", `${source}: `), document.createTextNode(readable.signals.join("; ")));
   return node;
 }
 
@@ -127,16 +193,7 @@ function element(tag, className, value) {
   return node;
 }
 
-function placeholder(label, loading = false, kind = "") {
-  const block = element("div", `placeholder ${kind}${loading ? " loading" : ""}`.trim());
-  if (loading) {
-    block.append(element("span", "visually-hidden", label));
-    for (let index = 0; index < 3; index++) block.append(element("span", "skeleton-line"));
-  } else {
-    block.append(element("span", "placeholder-mark", "·"), element("span", "", label));
-  }
-  return block;
-}
+function placeholder(label) { return element("p", "placeholder", label); }
 
 function svgElement(tag, attributes) {
   const node = document.createElementNS(svgNS, tag);
@@ -186,7 +243,7 @@ function showConsole() {
 
 function reportBadge(state) {
   if (!state.exists) return "";
-  return state.grounded ? "GROUNDED REPORT" : "REPORT · CHECK NEEDED";
+  return state.grounded ? "Report verified" : "Report needs review";
 }
 
 function money(transaction) {
@@ -202,6 +259,11 @@ function shortDate(value) {
   return Number.isNaN(time.valueOf()) ? String(value) : time.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
+function queueDate(value) {
+  const time = new Date(value);
+  return Number.isNaN(time.valueOf()) ? String(value) : time.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
 function drawQueue() {
   const list = $("queue");
   list.replaceChildren();
@@ -212,26 +274,16 @@ function drawQueue() {
     button.classList.toggle("active", selected && selected.id === flag.id);
     button.setAttribute("aria-label", `${transaction.merchant_name}, ${money(transaction)}, score ${Math.round(flag.score * 100)} percent`);
     const top = element("div", "queue-top");
-    const merchant = element("strong", "", transaction.merchant_name);
+    const merchant = element("strong", "queue-merchant", transaction.merchant_name);
     merchant.title = transaction.merchant_name;
-    const score = element("span", "queue-score", `${Math.round(flag.score * 100)}%`);
-    if (flag.score >= 0.8) score.classList.add("high");
-    top.append(element("span", `risk-dot${flag.score >= 0.8 ? " high" : ""}`), merchant, score);
-    const middle = element("div", "queue-middle");
-    middle.append(element("b", "", money(transaction)), element("span", "", shortDate(transaction.timestamp)));
+    const level = flag.score >= 0.8 ? "high" : flag.score >= 0.5 ? "medium" : "low";
+    top.append(element("span", `risk-dot ${level}`), merchant, element("span", "queue-amount", money(transaction)));
     const bottom = element("div", "queue-bottom");
-    const summary = reasonFormatting.readableReason(flag.reasons[0] || "Flagged for review", transaction.currency);
-    const reason = element("span", "queue-reason", `${summary.source} · ${summary.signals.join(" · ")}`);
-    reason.title = reason.textContent;
-    bottom.append(reason);
-    const badge = element("span", "report-badge", reportBadge(flag.explanation));
+    bottom.append(element("span", "queue-score", `Score ${Math.round(flag.score * 100)}`), element("span", "queue-date", queueDate(transaction.timestamp)));
+    const badge = element("span", "report-status", reportBadge(flag.explanation));
     if (flag.explanation.exists && !flag.explanation.grounded) badge.classList.add("unverified");
     bottom.append(badge);
-    const bar = element("progress", "score-track");
-    bar.max = 1;
-    bar.value = flag.score;
-    if (flag.score >= 0.8) bar.classList.add("high");
-    button.append(top, middle, bottom, bar);
+    button.append(top, bottom);
     button.addEventListener("click", () => selectFlag(flag));
     list.append(button);
   }
@@ -243,7 +295,7 @@ function drawQueue() {
 
 async function loadQueue() {
   message($("queue-message"), "Loading flags…");
-  $("queue").replaceChildren(...Array.from({ length: 3 }, () => placeholder("Loading flags", true, "queue-placeholder")));
+  $("queue").replaceChildren();
   const params = new URLSearchParams({ limit: String(pageSize), offset: String(offset), min_score: $("score-filter").value });
   const account = $("account-filter").value.trim();
   if (account) params.set("account_id", account);
@@ -258,13 +310,12 @@ async function loadQueue() {
       $("empty-detail").hidden = false;
     }
     drawQueue();
-    if (!items.length) $("queue").append(placeholder("Try another account or minimum score.", false, "queue-empty"));
     if (items.length && !items.some((item) => selected && item.id === selected.id)) await selectFlag(items[0]);
   } catch (failure) {
     if (failure.status === 401 || failure.status === 403 || $("console").hidden) showSignIn(failure.message);
     else {
       message($("queue-message"), failure.message, true);
-      $("queue").replaceChildren(placeholder("The queue could not be loaded.", false, "queue-empty"));
+      $("queue").replaceChildren();
     }
   }
 }
@@ -305,78 +356,121 @@ function drawChart() {
   const target = $("chart");
   target.replaceChildren();
   if (!timeline.length) {
-    target.append(placeholder("No account activity available.", false, "chart-placeholder"));
+    target.append(placeholder("No account activity available."));
     target.setAttribute("aria-label", "No account activity available.");
     return;
   }
-  const width = 800, height = 205, left = 55, right = 20, top = 18, bottom = 36;
-  const svg = svgElement("svg", { viewBox: `0 0 ${width} ${height}`, preserveAspectRatio: "none", "aria-hidden": "true" });
-  const defs = svgElement("defs", {});
-  const gradient = svgElement("linearGradient", { id: "timeline-fill", x1: 0, y1: 0, x2: 0, y2: 1 });
-  gradient.append(svgElement("stop", { offset: 0, class: "area-top" }), svgElement("stop", { offset: 1, class: "area-bottom" }));
-  defs.append(gradient);
-  svg.append(defs);
+  const width = Math.max(240, Math.round(target.clientWidth || 800));
+  const height = 260, left = 72, right = 16, top = 30, bottom = 35;
+  const plotRight = width - right, plotBottom = height - bottom;
+  const svg = svgElement("svg", { width, height, "aria-hidden": "true" });
   const times = timeline.map((row) => new Date(row.timestamp).valueOf());
   const amounts = timeline.map((row) => Math.max(0.01, Number(row.amount)));
-  const log = Math.max(...amounts) / Math.min(...amounts) > 30;
-  const values = amounts.map((value) => log ? Math.log10(value) : value);
+  const scale = chartMath.scaleChoice(amounts);
+  const ticks = chartMath.niceTicks(amounts, scale);
+  const transform = (value) => scale === "log" ? Math.log10(value) : value;
+  const lower = transform(ticks[0]), upper = transform(ticks[ticks.length - 1]);
   const minTime = Math.min(...times), maxTime = Math.max(...times);
-  const minValue = Math.min(...values), maxValue = Math.max(...values);
-  const x = (time, index) => maxTime === minTime
-    ? left + (index / Math.max(1, times.length - 1)) * (width - left - right)
-    : left + ((time - minTime) / (maxTime - minTime)) * (width - left - right);
-  const y = (value) => top + (1 - (value - minValue) / (maxValue - minValue || 1)) * (height - top - bottom);
-  for (let index = 0; index < 3; index++) {
-    const lineY = top + index * (height - top - bottom) / 2;
-    svg.append(svgElement("line", { x1: left, x2: width - right, y1: lineY, y2: lineY, class: "grid" }));
-    const value = minValue + (2 - index) * (maxValue - minValue) / 2;
-    const label = svgElement("text", { x: left - 7, y: lineY + 3, "text-anchor": "end" });
-    label.textContent = log ? `${Math.round(10 ** value)}` : `${Math.round(value)}`;
+  const timePadding = maxTime === minTime ? 7200000 : Math.max(3600000, (maxTime - minTime) * 0.04);
+  const domainStart = minTime - timePadding, domainEnd = maxTime + timePadding;
+  const x = (time) => left + ((time - domainStart) / (domainEnd - domainStart)) * (plotRight - left);
+  const y = (value) => plotBottom - ((transform(value) - lower) / (upper - lower || 1)) * (plotBottom - top);
+  const compact = (value) => value >= 1000 ? `${Number((value / 1000).toPrecision(3))}k` : `${Number(value.toPrecision(3))}`;
+  const title = svgElement("text", { x: 0, y: 12, class: "axis-title" });
+  title.textContent = `Amount, ${selected.transaction.currency}`;
+  svg.append(title);
+  for (const tick of ticks) {
+    const lineY = y(tick);
+    svg.append(svgElement("line", { x1: left, x2: plotRight, y1: lineY, y2: lineY, class: "grid" }));
+    const label = svgElement("text", { x: left - 9, y: lineY + 4, "text-anchor": "end", class: "axis-label" });
+    label.textContent = compact(tick);
     svg.append(label);
   }
-  svg.append(svgElement("line", { x1: left, x2: width - right, y1: height - bottom, y2: height - bottom, class: "axis" }));
-  const linePoints = timeline.map((row, index) => `${x(times[index], index)},${y(values[index])}`).join(" ");
-  svg.append(svgElement("polygon", {
-    points: `${left},${height - bottom} ${linePoints} ${x(times[times.length - 1], times.length - 1)},${height - bottom}`,
-    fill: "url(#timeline-fill)", stroke: "none",
-  }));
-  const polyline = svgElement("polyline", { points: linePoints, class: "line", "stroke-linejoin": "round" });
-  svg.append(polyline);
+  svg.append(svgElement("line", { x1: left, x2: plotRight, y1: plotBottom, y2: plotBottom, class: "axis" }));
+  const dateTicks = chartMath.dateTicks(domainStart, domainEnd);
+  const tickStride = Math.ceil(dateTicks.length / Math.max(2, Math.floor((plotRight - left) / 75)));
+  for (const [index, time] of dateTicks.entries()) {
+    if (index % tickStride) continue;
+    const coordinate = x(time);
+    svg.append(svgElement("line", { x1: coordinate, x2: coordinate, y1: plotBottom, y2: plotBottom + 4, class: "axis" }));
+    const label = svgElement("text", { x: coordinate, y: height - 9, "text-anchor": "middle", class: "axis-label" });
+    label.textContent = domainEnd - domainStart < 2 * 86400000
+      ? new Date(time).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" })
+      : new Date(time).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+    svg.append(label);
+  }
+  const prior = timeline.filter((row) => row.transaction_id !== selected.transaction_id).map((row) => Number(row.amount));
+  if (prior.length >= 3) {
+    for (const [name, fraction] of [["Median", 0.5], ["95th percentile", 0.95]]) {
+      const value = chartMath.percentile(prior, fraction);
+      const coordinate = y(value);
+      svg.append(svgElement("line", { x1: left, x2: plotRight, y1: coordinate, y2: coordinate, class: "reference-line" }));
+      const label = svgElement("text", { x: plotRight - 3, y: coordinate - 5, "text-anchor": "end", class: "reference-label" });
+      label.textContent = `${name} ${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      svg.append(label);
+    }
+  }
   const flaggedIds = new Set(accountFlags.map((flag) => flag.transaction_id));
   timeline.forEach((row, index) => {
-    const classes = ["point"];
-    if (flaggedIds.has(row.transaction_id)) classes.push("flagged");
-    if (selected && row.transaction_id === selected.transaction_id) classes.push("selected");
+    const isSelected = row.transaction_id === selected.transaction_id;
+    const coordinateX = x(times[index]), coordinateY = y(amounts[index]);
+    if (isSelected) svg.append(svgElement("line", { x1: coordinateX, x2: coordinateX, y1: top, y2: plotBottom, class: "selected-guide" }));
+    const classes = ["point", isSelected ? "selected" : flaggedIds.has(row.transaction_id) ? "flagged" : "ordinary"];
+    const ring = svgElement("circle", { cx: coordinateX, cy: coordinateY, r: 8, class: "cited-ring" });
+    ring.dataset.ref = row.transaction_id;
+    svg.append(ring);
     const point = svgElement("circle", {
-      cx: x(times[index], index), cy: y(values[index]),
-      r: classes.includes("selected") ? 6 : classes.includes("flagged") ? 4 : 2.5,
+      cx: coordinateX, cy: coordinateY,
+      r: isSelected ? 5 : classes.includes("flagged") ? 4 : 3,
       class: classes.join(" "),
     });
     point.dataset.ref = row.transaction_id;
-    const title = svgElement("title", {});
-    title.textContent = `${shortDate(row.timestamp)} · ${money(row)} · ${row.merchant_name}`;
-    point.append(title);
+    const tooltip = svgElement("g", { class: "chart-tooltip", visibility: "hidden" });
+    const tooltipWidth = Math.min(220, width - left - right);
+    const tooltipX = chartMath.labelPlacement(coordinateX, width, tooltipWidth, left, right);
+    const tooltipY = coordinateY > 95 ? coordinateY - 74 : coordinateY + 12;
+    tooltip.append(svgElement("rect", { x: tooltipX, y: tooltipY, width: tooltipWidth, height: 60, rx: 0 }));
+    for (const [line, value] of [[0, shortDate(row.timestamp)], [1, money(row)], [2, row.merchant_name]]) {
+      const text = svgElement("text", { x: tooltipX + 8, y: tooltipY + 16 + line * 17 });
+      text.textContent = line === 2 && value.length > 28 ? `${value.slice(0, 27)}…` : value;
+      tooltip.append(text);
+    }
+    const show = () => { point.setAttribute("r", isSelected ? 7 : 6); tooltip.setAttribute("visibility", "visible"); };
+    const hide = () => { point.setAttribute("r", isSelected ? 5 : classes.includes("flagged") ? 4 : 3); tooltip.setAttribute("visibility", "hidden"); };
+    point.addEventListener("mouseenter", show);
+    point.addEventListener("mouseleave", hide);
     svg.append(point);
+    if (isSelected) {
+      const amount = money(row);
+      // Sit beside the point at its height; flip to the left when there is no room on the right.
+      const fits = coordinateX + 10 + amount.length * 7 <= width - right;
+      const label = svgElement("text", {
+        x: fits ? coordinateX + 10 : coordinateX - 10,
+        y: Math.max(top + 10, coordinateY + 4),
+        "text-anchor": fits ? "start" : "end",
+        class: "selected-label",
+      });
+      label.textContent = amount;
+      svg.append(label);
+    }
+    svg.append(tooltip);
   });
-  for (const [index, time] of [[0, minTime], [1, maxTime]]) {
-    const label = svgElement("text", { x: index ? width - right : left, y: height - 9, "text-anchor": index ? "end" : "start" });
-    label.textContent = new Date(time).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-    svg.append(label);
-  }
   target.append(svg);
   target.setAttribute("aria-label",
-    `${timeline.length} account transactions over time. ${log ? "Logarithmic" : "Linear"} amount scale. Selected transaction highlighted.`);
+    `${timeline.length} account transactions over time. ${scale === "log" ? "Logarithmic" : "Linear"} amount scale. Selected transaction highlighted.`);
+  if (activeReference) highlight(activeReference, true);
 }
 
 function highlight(ref, active) {
+  activeReference = active ? ref : null;
   let transaction = ref;
   for (const row of $("records").children) {
     if (row.dataset.ref !== ref) continue;
     row.classList.toggle("record-active", active);
     transaction = row.dataset.transaction || ref;
   }
-  for (const point of $("chart").querySelectorAll("circle")) {
-    if (point.dataset.ref === transaction) point.classList.toggle("cited", active);
+  for (const ring of $("chart").querySelectorAll(".cited-ring")) {
+    if (ring.dataset.ref === transaction) ring.classList.toggle("active", active);
   }
 }
 
@@ -438,8 +532,7 @@ function drawReport(payload, loading = false) {
       ? `Report unavailable · ${payload.failure}` : loading ? "Loading report…" : "No report generated";
     target.append(placeholder(payload && payload.failure
       ? "The report could not be completed. Try generating it again."
-      : loading ? "Loading report and cited records…" : "Generate a report to review the evidence and cited records.",
-    loading, "report-placeholder"));
+      : loading ? "Loading report and cited records…" : "Generate a report to review the evidence and cited records."));
     emptyRecords(loading ? "Loading cited records…" : "No cited records yet.", loading);
     return;
   }
@@ -449,58 +542,45 @@ function drawReport(payload, loading = false) {
     ? `${(latency / 1000).toFixed(2)} s` : "latency unavailable";
   $("report-meta").textContent = `${payload.model || "Unknown model"} · ${duration}`;
   badge.hidden = false;
-  badge.classList.toggle("unverified", !payload.grounded);
-  badge.textContent = payload.grounded ? "All claims verified against records" : "Some claims need review";
   const issues = payload.grounding ? payload.grounding.ungrounded_items || [] : [];
+  const claimCount = report.evidence.length + 1;
+  const rejectedClaims = new Set(issues.map((issue) => issue.claim_index));
+  badge.classList.toggle("unverified", !payload.grounded);
+  badge.textContent = payload.grounded
+    ? `Summary and all ${report.evidence.length} evidence claims verified against records`
+    : `${rejectedClaims.size} of ${claimCount} statements (summary plus evidence) could not be verified`;
   const lead = element("div", "report-lead");
   const summaryIssues = issues.filter((issue) => issue.claim_index === 0);
   if (summaryIssues.length) lead.classList.add("rejected");
   lead.append(element("p", "report-summary", report.summary));
   for (const issue of summaryIssues) lead.append(element("p", "claim-warning", issueText(issue)));
   target.append(lead);
-  const stats = element("div", "report-stats");
-  const statsItems = [
-    ["Risk", report.risk_level],
-    ["Action", report.recommended_action.replaceAll("_", " ")],
-  ];
-  for (const [label, value] of statsItems) {
-    const pill = element("span");
-    pill.dataset.value = value;
-    pill.append(element("strong", "", `${label}: `), document.createTextNode(value));
-    stats.append(pill);
-  }
-  const confidence = element("div", "confidence-stat");
-  const confidencePill = element("span");
-  confidencePill.append(element("strong", "", "Confidence: "),
-    document.createTextNode(`${Math.round(report.confidence * 100)}%`));
-  const meter = element("progress", "confidence-meter");
-  meter.max = 1;
-  meter.value = report.confidence;
-  meter.setAttribute("aria-label", "Report confidence");
-  confidence.append(confidencePill, meter);
-  stats.append(confidence);
-  target.append(stats, element("h4", "report-section-title", "Evidence claims"));
+  const stats = element("p", "report-stats");
+  const risk = element("span", `risk-word ${report.risk_level}`, report.risk_level);
+  stats.append(document.createTextNode("Risk "), risk, document.createTextNode(` · Recommended action: ${report.recommended_action.replaceAll("_", " ")} · Confidence ${Math.round(report.confidence * 100)}%`));
+  target.append(stats, element("h4", "report-section-title", "Evidence"));
+  const evidence = element("ol", "evidence-list");
   report.evidence.forEach((claim, index) => {
-    const box = element("div", "claim");
+    const box = element("li", "claim");
     const rejected = issues.filter((issue) => issue.claim_index === index + 1);
     if (rejected.length) box.classList.add("rejected");
-    const heading = element("div", "claim-heading");
-    heading.append(element("span", "claim-number", index + 1), element("span", "claim-text", claim.claim));
-    box.append(heading);
+    box.append(element("span", "claim-text", claim.claim));
+    const refs = element("div", "claim-refs");
+    claim.refs.forEach((ref, refIndex) => {
+      if (refIndex) refs.append(document.createTextNode(", "));
+      const link = element("button", "reference-link", ref);
+      link.type = "button";
+      link.addEventListener("mouseenter", () => highlight(ref, true));
+      link.addEventListener("mouseleave", () => highlight(ref, false));
+      link.addEventListener("focus", () => highlight(ref, true));
+      link.addEventListener("blur", () => highlight(ref, false));
+      refs.append(link);
+    });
+    box.append(refs);
     for (const issue of rejected) box.append(element("p", "claim-warning", issueText(issue)));
-    const chips = element("div", "chip-list");
-    for (const ref of claim.refs) {
-      const chip = element("button", "chip", ref);
-      chip.type = "button";
-      chip.addEventListener("mouseenter", () => highlight(ref, true));
-      chip.addEventListener("mouseleave", () => highlight(ref, false));
-      chip.addEventListener("focus", () => highlight(ref, true));
-      chip.addEventListener("blur", () => highlight(ref, false));
-      chips.append(chip);
-    }
-    box.append(chips);
-    target.append(box);
+    evidence.append(box);
   });
+  target.append(evidence);
   target.append(element("h4", "report-section-title", "Limitations"), element("p", "limitations", report.limitations));
   const cited = new Set(report.evidence.flatMap((claim) => claim.refs));
   for (const ref of cited) {
@@ -520,20 +600,24 @@ function drawReport(payload, loading = false) {
 
 async function selectFlag(flag) {
   selected = flag;
+  activeReference = null;
   drawQueue();
   $("empty-detail").hidden = true;
   $("detail").hidden = false;
-  $("detail-kicker").textContent = `FLAG #${flag.id} · ${shortDate(flag.transaction.timestamp)}`;
   $("detail-title").textContent = flag.transaction.merchant_name;
   $("detail-title").title = flag.transaction.merchant_name;
   $("detail-amount").textContent = money(flag.transaction);
-  $("detail-subtitle").textContent = `Account ${flag.transaction.account_id} · Transaction ${flag.transaction.transaction_id}`;
-  $("detail-score").textContent = `${Math.round(flag.score * 100)}% score`;
-  $("detail-score").classList.toggle("high", flag.score >= 0.8);
+  const subtitle = $("detail-subtitle");
+  subtitle.replaceChildren(document.createTextNode(`${shortDate(flag.transaction.timestamp)} · `),
+    element("code", "", flag.transaction.account_id), document.createTextNode(" · "),
+    element("code", "", flag.transaction.transaction_id));
+  const score = element("span", `risk-value ${flag.score >= 0.8 ? "high" : flag.score >= 0.5 ? "medium" : "low"}`, Math.round(flag.score * 100));
+  $("detail-score").replaceChildren(document.createTextNode("Risk score "), score);
+  $("generate").textContent = flag.explanation.exists ? "Regenerate report" : "Generate report";
   drawFacts(flag.transaction);
   $("reasons").replaceChildren(...flag.reasons.map((reason) => reasonNode(reason, flag.transaction.currency)));
   message($("detail-message"), "Loading account context…");
-  $("chart").replaceChildren(placeholder("Loading account activity…", true, "chart-placeholder"));
+  $("chart").replaceChildren(placeholder("Loading account activity…"));
   $("chart").setAttribute("aria-label", "Loading account activity.");
   drawReport(null, true);
   const results = await Promise.allSettled([
@@ -542,7 +626,7 @@ async function selectFlag(flag) {
   ]);
   if (!selected || selected.id !== flag.id) return;
   if (results[0].status === "rejected") {
-    $("chart").replaceChildren(placeholder("Account activity could not be loaded.", false, "chart-placeholder"));
+    $("chart").replaceChildren(placeholder("Account activity could not be loaded."));
     $("chart").setAttribute("aria-label", "Account activity could not be loaded.");
   }
   if (results[1].status === "rejected") {
@@ -571,6 +655,7 @@ async function generate() {
     if (selected && selected.id === flagId) {
       drawReport(payload);
       selected.explanation = { exists: true, grounded: payload.grounded };
+      button.textContent = "Regenerate report";
       drawQueue();
       const status = payload.failure ? `Report could not be completed: ${payload.failure}` : "Report saved.";
       message($("detail-message"), status, Boolean(payload.failure));
@@ -588,9 +673,9 @@ async function checkAudit() {
   try {
     const status = await api("/v1/audit/verify");
     $("audit-strip").hidden = false;
-    $("audit-status").textContent = status.ok ? "Verified" : `Broken at entry ${status.first_broken_entry_id}`;
-    $("audit-status").classList.toggle("bad", !status.ok);
-    $("audit-meta").textContent = `${status.entry_count} entries · head ${status.head_hash ? status.head_hash.slice(0, 12) : "none"}`;
+    $("audit-status").textContent = status.ok ? "Audit log verified" : `Audit log broken at entry ${status.first_broken_entry_id}`;
+    $("audit-strip").classList.toggle("bad", !status.ok);
+    $("audit-meta").textContent = ` · ${status.entry_count} entries`;
   } catch (failure) {
     $("audit-strip").hidden = true;
   }
@@ -611,9 +696,21 @@ $("sign-out").addEventListener("click", () => {
   showSignIn();
 });
 $("filters").addEventListener("submit", (event) => { event.preventDefault(); offset = 0; loadQueue(); });
+$("score-filter").addEventListener("change", () => { offset = 0; loadQueue(); });
+$("account-filter").addEventListener("change", () => { offset = 0; loadQueue(); });
 $("previous").addEventListener("click", () => { offset = Math.max(0, offset - pageSize); loadQueue(); });
 $("next").addEventListener("click", () => { offset += pageSize; loadQueue(); });
 $("generate").addEventListener("click", generate);
+// Redraw only when the width changes; drawing changes the height, which would retrigger the observer.
+let chartWidth = 0;
+if (typeof ResizeObserver !== "undefined") {
+  new ResizeObserver((entries) => {
+    const width = Math.round(entries[0].contentRect.width);
+    if (width === chartWidth) return;
+    chartWidth = width;
+    if (timeline.length) drawChart();
+  }).observe($("chart"));
+}
 document.addEventListener("keydown", (event) => {
   if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
   if (!$("sign-in").hidden || !items.length) return;

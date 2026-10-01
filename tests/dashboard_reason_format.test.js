@@ -5,7 +5,28 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
-const { featureFormatters, readableReason } = require("../src/sentinel/dashboard/dashboard.js");
+const { featureFormatters, readableReason, scaleChoice, niceTicks, percentile, dateTicks, labelPlacement } = require("../src/sentinel/dashboard/dashboard.js");
+
+test("chart math selects scales and produces useful ticks", () => {
+  assert.equal(scaleChoice([7, 7512]), "log");
+  assert.deepEqual(niceTicks([7, 7512]), [1, 10, 100, 1000, 10000]);
+  assert.equal(scaleChoice([20, 95]), "linear");
+  assert.deepEqual(niceTicks([20, 95]), [20, 40, 60, 80, 100]);
+  assert.deepEqual(niceTicks([]), []);
+  assert.equal(scaleChoice([]), "linear");
+  assert.equal(percentile([], 0.5), null);
+  assert.equal(percentile([10], 0.95), 10);
+  assert.equal(percentile([10, 20], 0.5), 15);
+  assert.equal(percentile([10, 20, 30, 40], 0.95), 38.5);
+  assert.deepEqual(dateTicks(0, 0), []);
+  const dates = dateTicks(Date.UTC(2026, 0, 1), Date.UTC(2026, 1, 15));
+  assert.ok(dates.length >= 4 && dates.length <= 6);
+  assert.ok(dates.every((time) => new Date(time).getUTCDay() === 1));
+  const hours = dateTicks(Date.UTC(2026, 0, 1, 10), Date.UTC(2026, 0, 1, 14));
+  assert.ok(hours.length >= 4 && hours.length <= 6);
+  assert.ok(hours.every((time) => new Date(time).getUTCMinutes() === 0));
+  assert.equal(labelPlacement(790, 800, 90), 694);
+});
 
 test("model features use currency, counts, ratios, durations, and short boolean phrases", () => {
   assert.deepEqual(readableReason(
@@ -64,6 +85,7 @@ test("dashboard renders risk, timeline, and report grounding states", async () =
       this.className = "";
       this.hidden = false;
       this.value = "";
+      this.clientWidth = 800;
       this.classList = {
         add: (name) => { this.className = [...new Set([...this.className.split(" "), name])].filter(Boolean).join(" "); },
         toggle: (name, force) => {
@@ -96,7 +118,7 @@ test("dashboard renders risk, timeline, and report grounding states", async () =
     "sign-in", "console", "sign-out", "audit-strip", "sign-in-error", "key-form", "api-key",
     "queue", "queue-count", "page-label", "previous", "next", "queue-message", "score-filter",
     "account-filter", "detail", "empty-detail", "facts", "reasons", "chart", "report",
-    "records", "report-grounding", "report-meta", "detail-kicker", "detail-title", "detail-amount",
+    "records", "report-grounding", "report-meta", "detail-title", "detail-amount",
     "detail-subtitle", "detail-score", "detail-message", "generate", "filters", "audit-status", "audit-meta",
   ];
   const nodes = Object.fromEntries(ids.map((id) => [id, new Node()]));
@@ -160,32 +182,48 @@ test("dashboard renders risk, timeline, and report grounding states", async () =
 
   const queue = nodes.queue.querySelectorAll(".queue-item");
   assert.equal(queue.length, 2);
-  assert.equal(queue[0].querySelectorAll(".queue-score")[0].classList.contains("high"), true);
-  assert.equal(queue[1].querySelectorAll(".queue-score")[0].classList.contains("high"), false);
-  assert.equal(nodes["detail-score"].classList.contains("high"), true);
+  assert.equal(queue[0].querySelectorAll(".risk-dot")[0].classList.contains("high"), true);
+  assert.equal(queue[1].querySelectorAll(".risk-dot")[0].classList.contains("medium"), true);
+  assert.equal(queue[0].querySelectorAll(".queue-score")[0].textContent, "Score 90");
+  assert.equal(queue[0].querySelectorAll(".report-status")[0].textContent, "Report needs review");
+  assert.equal(nodes["detail-score"].querySelectorAll(".risk-value")[0].classList.contains("high"), true);
   assert.equal(nodes["detail-amount"].textContent, "USD 30.00");
   assert.equal(nodes.facts.textContent.includes("Amount"), false);
 
   const svg = nodes.chart.querySelectorAll("svg")[0];
-  const gradient = svg.querySelectorAll("linearGradient")[0];
-  assert.equal(gradient.attributes.id, "timeline-fill");
-  assert.deepEqual(gradient.children.map((stop) => stop.className), ["area-top", "area-bottom"]);
-  const polygon = svg.querySelectorAll("polygon")[0];
-  assert.equal(polygon.attributes.fill, "url(#timeline-fill)");
-  assert.equal(polygon.attributes.stroke, "none");
-  assert.equal(svg.children.indexOf(polygon) < svg.children.indexOf(svg.querySelectorAll("polyline")[0]), true);
-  assert.deepEqual(svg.querySelectorAll("circle").map((point) => point.attributes.r), ["2.5", "4", "6"]);
+  assert.equal(svg.attributes.width, "800");
+  assert.equal(svg.attributes.height, "260");
+  assert.equal(svg.querySelectorAll("polygon").length, 0);
+  assert.equal(svg.querySelectorAll("polyline").length, 0);
+  assert.deepEqual(svg.querySelectorAll(".point").map((point) => point.attributes.r), ["3", "4", "5"]);
+  assert.equal(svg.querySelectorAll(".reference-line").length, 0);
+  assert.equal(svg.querySelectorAll(".selected-guide").length, 1);
+  assert.equal(svg.querySelectorAll(".selected-label")[0].textContent, "USD 30.00");
 
   const stats = nodes.report.querySelectorAll(".report-stats")[0];
-  assert.deepEqual(stats.querySelectorAll("span").map((pill) => pill.dataset.value), ["high", "block and contact", undefined]);
-  assert.equal(stats.querySelectorAll("progress")[0].value, 0.82);
-  assert.equal(nodes.report.querySelectorAll(".claim-number")[0].textContent, "1");
+  assert.equal(stats.textContent, "Risk high · Recommended action: block and contact · Confidence 82%");
+  assert.equal(nodes["report-grounding"].textContent, "2 of 2 statements (summary plus evidence) could not be verified");
   assert.equal(nodes.report.querySelectorAll(".claim")[0].classList.contains("rejected"), true);
   assert.equal(nodes.report.querySelectorAll(".claim-warning").length, 2);
-  assert.equal(nodes.report.querySelectorAll(".chip")[0].textContent, "tx_3");
+  assert.equal(nodes.report.querySelectorAll(".reference-link")[0].textContent, "tx_3");
+  nodes.report.querySelectorAll(".reference-link")[0].listeners.focus();
+  assert.equal(nodes.records.children[0].classList.contains("record-active"), true);
+  assert.equal(svg.querySelectorAll(".cited-ring")[2].classList.contains("active"), true);
 
   await queue[1].listeners.click();
-  assert.equal(nodes["detail-score"].classList.contains("high"), false);
+  assert.equal(nodes["detail-score"].querySelectorAll(".risk-value")[0].classList.contains("medium"), true);
   assert.equal(nodes["detail-amount"].textContent, "USD 20.00");
   assert.equal(nodes.queue.querySelectorAll(".queue-item")[1].classList.contains("active"), true);
+
+  history.splice(0);
+  await nodes.queue.querySelectorAll(".queue-item")[0].listeners.click();
+  assert.equal(nodes.chart.querySelectorAll(".point").length, 1);
+  assert.equal(nodes.chart.querySelectorAll(".reference-line").length, 0);
+  history.push(transaction("tx_1", 10, "2026-10-01T10:00:00Z"));
+  await nodes.queue.querySelectorAll(".queue-item")[0].listeners.click();
+  assert.equal(nodes.chart.querySelectorAll(".point").length, 2);
+  assert.equal(nodes.chart.querySelectorAll(".reference-line").length, 0);
+  history.push(transaction("tx_0", 5, "2026-10-01T09:00:00Z"), transaction("tx_2", 20, "2026-10-01T11:00:00Z"));
+  await nodes.queue.querySelectorAll(".queue-item")[0].listeners.click();
+  assert.equal(nodes.chart.querySelectorAll(".reference-line").length, 2);
 });

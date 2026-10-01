@@ -9,163 +9,88 @@
   </head>
   <body>
     <header class="topbar">
-      <div class="brand">
-        <span class="brand-mark" aria-hidden="true">S</span>
-        <div>
-          <strong>Sentinel</strong>
-          <small>ANALYST CONSOLE</small>
-        </div>
-      </div>
+      <div class="brand"><strong>Sentinel</strong><span>Analyst console</span></div>
       <div class="top-actions">
-        <span class="environment">TRANSACTION MONITORING</span>
+        <span id="audit-strip" class="audit-status" hidden><span class="status-dot"></span><span id="audit-status"></span><span id="audit-meta"></span></span>
         <button id="sign-out" class="text-button" hidden>Sign out</button>
       </div>
     </header>
     <main>
       <section id="sign-in" class="sign-in" aria-labelledby="sign-in-title">
-        <div class="sign-in-card">
-          <div class="eyebrow">SECURE ACCESS</div>
-          <h1 id="sign-in-title">Flag review, in context.</h1>
-          <p>Enter a read-scoped API key to open the analyst queue. The key stays in this browser tab.</p>
+        <div class="sign-in-content">
+          <h1 id="sign-in-title">Sentinel</h1>
+          <p>Enter your API key to open the analyst console.</p>
           <form id="key-form">
             <label for="api-key">API key</label>
-            <input id="api-key" type="password" autocomplete="off" spellcheck="false" required placeholder="Enter API key">
+            <input id="api-key" type="password" autocomplete="off" spellcheck="false" required>
             <button type="submit" class="primary">Open console</button>
           </form>
           <p id="sign-in-error" class="error" role="alert" hidden></p>
-          <div class="sign-in-features" aria-label="Console views">
-            <div class="feature-tile"><span>01</span><strong>Flag queue</strong><small>Filter flagged activity</small></div>
-            <div class="feature-tile"><span>02</span><strong>Account timeline</strong><small>See transaction history</small></div>
-            <div class="feature-tile"><span>03</span><strong>Cited reports</strong><small>Inspect source records</small></div>
-          </div>
         </div>
       </section>
       <section id="console" class="workspace" hidden aria-label="Analyst workspace">
         <aside class="queue-panel">
-          <div class="panel-heading">
-            <div>
-              <div class="eyebrow">WORK QUEUE</div>
-              <h1>Flagged activity</h1>
-            </div>
-            <span id="queue-count" class="count">—</span>
-          </div>
+          <div class="panel-heading"><h1>Flagged activity</h1><span id="queue-count" class="muted">—</span></div>
           <form id="filters" class="filters">
-            <label>Account
+            <label for="account-filter">Account
               <input id="account-filter" type="search" placeholder="All accounts" autocomplete="off">
             </label>
-            <label>Minimum score
+            <label for="score-filter">Minimum score
               <select id="score-filter">
-                <option value="0">Any score</option>
-                <option value="0.5">50%+</option>
-                <option value="0.7">70%+</option>
-                <option value="0.9">90%+</option>
+                <option value="0">Any</option>
+                <option value="0.5">50+</option>
+                <option value="0.7">70+</option>
+                <option value="0.9">90+</option>
               </select>
             </label>
-            <button type="submit">Apply</button>
           </form>
           <p id="queue-message" class="status" role="status"></p>
           <div id="queue" class="queue" aria-label="Flag queue"></div>
           <div class="pager">
-            <button id="previous" type="button">Previous</button>
+            <button id="previous" type="button" class="text-button">Previous</button>
             <span id="page-label">Page 1</span>
-            <button id="next" type="button">Next</button>
+            <button id="next" type="button" class="text-button">Next</button>
           </div>
         </aside>
         <section class="detail-panel" aria-labelledby="detail-title">
-          <div id="empty-detail" class="empty-detail">
-            <div class="empty-icon" aria-hidden="true">↗</div>
-            <h2>Select a flag to inspect</h2>
-            <p>Transaction context, account activity, and cited analysis appear here.</p>
-          </div>
-          <div id="detail" hidden>
-            <div class="detail-heading">
-              <div class="detail-heading-main">
-                <div id="detail-kicker" class="eyebrow"></div>
+          <div class="detail-content">
+            <p id="empty-detail" class="muted">Select a flag to inspect.</p>
+            <div id="detail" hidden>
+              <header>
                 <div class="detail-identity">
                   <h2 id="detail-title"></h2>
-                  <span id="detail-amount" class="detail-amount"></span>
+                  <span id="detail-amount"></span>
                 </div>
-                <p id="detail-subtitle" class="muted"></p>
-              </div>
-              <div class="heading-right">
-                <span id="detail-score" class="score-pill"></span>
-                <button id="generate" type="button" class="primary">Generate report</button>
-              </div>
-            </div>
-            <p id="detail-message" class="status" role="status"></p>
-            <div class="detail-grid">
-              <section class="card">
-                <div class="card-title">
-                  <h3>Transaction facts</h3>
-                  <span class="section-index">01</span>
+                <p id="detail-subtitle" class="detail-subtitle"></p>
+                <div class="detail-actions">
+                  <span id="detail-score"></span>
+                  <button id="generate" type="button" class="primary">Generate report</button>
                 </div>
-                <dl id="facts" class="facts"></dl>
+              </header>
+              <p id="detail-message" class="status" role="status"></p>
+              <section class="detail-section"><h3>Why it was flagged</h3><ul id="reasons" class="reasons"></ul></section>
+              <section class="detail-section"><h3>Transaction</h3><dl id="facts" class="facts"></dl></section>
+              <section class="detail-section"><h3>Account history</h3>
+                <div id="chart" class="chart" role="img" aria-label="Account transaction amounts over time"></div>
+                <div class="chart-legend">
+                  <span><i class="legend-dot"></i>Transaction</span>
+                  <span><i class="legend-dot flagged"></i>Other flag</span>
+                  <span><i class="legend-dot selected"></i>Selected transaction</span>
+                </div>
               </section>
-              <section class="card">
-                <div class="card-title">
-                  <h3>Detector reasons</h3>
-                  <span class="section-index">02</span>
+              <section class="detail-section"><h3>Analyst report</h3><p id="report-meta" class="muted">No report generated</p><p id="report-grounding" class="grounding-status" hidden></p><div id="report"></div></section>
+              <section class="detail-section"><h3>Cited records</h3>
+                <div class="table-scroll">
+                  <table>
+                    <thead><tr><th>Reference</th><th>Record</th></tr></thead>
+                    <tbody id="records"></tbody>
+                  </table>
                 </div>
-                <ol id="reasons" class="reasons"></ol>
               </section>
             </div>
-            <section class="card">
-              <div class="card-title">
-                <div>
-                  <h3>Account timeline</h3>
-                  <p>Prior transactions · amount over time</p>
-                </div>
-                <span class="section-index">03</span>
-              </div>
-              <div id="chart" class="chart" role="img" aria-label="Account transaction amounts over time"></div>
-              <div class="chart-legend">
-                <span>
-                  <i class="legend-dot"></i>Transaction</span>
-                <span>
-                  <i class="legend-dot flagged"></i>Other flag</span>
-                <span>
-                  <i class="legend-dot selected"></i>Selected flag</span>
-              </div>
-            </section>
-            <section class="card">
-              <div class="card-title">
-                <div>
-                  <h3>Analyst report</h3>
-                  <p id="report-meta">No report generated</p>
-                  <span id="report-grounding" class="grounding-badge" hidden></span>
-                </div>
-                <span class="section-index">04</span>
-              </div>
-              <div id="report"></div>
-            </section>
-            <section class="card">
-              <div class="card-title">
-                <div>
-                  <h3>Cited records</h3>
-                  <p>Focus a reference above to locate its source.</p>
-                </div>
-                <span class="section-index">05</span>
-              </div>
-              <div class="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Reference</th>
-                      <th>Record</th>
-                    </tr>
-                  </thead>
-                  <tbody id="records"></tbody>
-                </table>
-              </div>
-            </section>
           </div>
         </section>
       </section>
     </main>
-    <footer id="audit-strip" class="audit-strip" hidden>
-      <span class="audit-label">AUDIT CHAIN</span>
-      <span id="audit-status"></span>
-      <span id="audit-meta"></span>
-    </footer>
   </body>
 </html>

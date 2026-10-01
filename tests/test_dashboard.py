@@ -34,10 +34,21 @@ def test_dashboard_assets_are_public_and_hardened(tmp_path: Path) -> None:
             assert response.headers["referrer-policy"] == "no-referrer"
         assert "sk_" not in client.get("/").text
         script = client.get("/assets/dashboard.js").text
+        stylesheet = client.get("/assets/dashboard.css").text
+        markup = client.get("/").text
         mapped = set(re.findall(r"^    ([a-z0-9_]+): \(value", script, re.MULTILINE))
         assert mapped == set(FEATURE_NAMES)
         for sink in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
             assert sink not in script
+        for decoration in (
+            "gradient",
+            "backdrop-filter",
+            "box-shadow",
+            "blur(",
+            "text-transform: uppercase",
+        ):
+            assert decoration not in stylesheet
+        assert not re.search(r"\sstyle\s*=|<script(?![^>]*\bsrc=)", markup)
 
 
 def test_flag_transaction_status_and_min_score(tmp_path: Path) -> None:
