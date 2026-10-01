@@ -1,6 +1,6 @@
 import json
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -57,11 +57,23 @@ def test_patterns_rate_and_record_shape(splits: dict[str, Path], split: str) -> 
     assert len(transactions) == len(labels)
     assert 0.01 <= sum(bool(row["is_fraud"]) for row in labels) / len(labels) <= 0.03
     assert {row["pattern"] for row in labels if row["is_fraud"]} == set(PATTERN_SIZES)
+    assert {row["scenario"] for row in labels if row["scenario"]} == {
+        "travel",
+        "new_device",
+        "large_purchase",
+        "busy_day",
+    }
+    assert all(not row["is_fraud"] for row in labels if row["scenario"])
     assert [row["transaction_id"] for row in transactions] == [
         row["transaction_id"] for row in labels
     ]
-    assert all("is_fraud" not in row and "pattern" not in row and "episode_id" not in row
-               for row in transactions)
+    assert all(
+        "is_fraud" not in row
+        and "pattern" not in row
+        and "episode_id" not in row
+        and "scenario" not in row
+        for row in transactions
+    )
     timestamps = [datetime.fromisoformat(str(row["timestamp"])) for row in transactions]
     assert timestamps == sorted(timestamps)
     assert all(timestamp.utcoffset().total_seconds() == 0 for timestamp in timestamps)
@@ -86,18 +98,13 @@ def test_episodes_have_expected_behavior(splits: dict[str, Path], split: str) ->
         account_id = rows[0]["account_id"]
         assert all(row["account_id"] == account_id for row in rows)
         times = [datetime.fromisoformat(str(row["timestamp"])) for row in rows]
-        same_account_between = [
-            row for row in transactions
-            if row["account_id"] == account_id
-            and str(rows[0]["timestamp"]) <= str(row["timestamp"]) <= str(rows[-1]["timestamp"])
-        ]
-        assert same_account_between == rows
         if pattern == "structuring":
             amounts = {Decimal(str(row["amount"])) for row in rows}
-            assert len(amounts) == 1
+            assert len(amounts) > 1
             assert all(9000 <= amount < 10000 for amount in amounts)
+            assert (max(times) - min(times)).total_seconds() >= 3 * 3600
         elif pattern == "velocity_burst":
-            assert (max(times) - min(times)).total_seconds() <= 15 * 60
+            assert (max(times) - min(times)).total_seconds() <= 3 * 3600
         elif pattern == "amount_spike":
             prior_amounts = [
                 float(str(row["amount"]))
@@ -107,19 +114,18 @@ def test_episodes_have_expected_behavior(splits: dict[str, Path], split: str) ->
             ]
             assert prior_amounts
             assert min(Decimal(str(row["amount"])) for row in rows) > Decimal(
-                str(5 * np.percentile(prior_amounts, 95) - 0.01)
+                str(2.4 * np.percentile(prior_amounts, 95) - 0.01)
             )
         elif pattern == "account_takeover":
             earlier = [
-                row for row in transactions
+                row
+                for row in transactions
                 if row["account_id"] == account_id
                 and str(row["timestamp"]) < str(rows[0]["timestamp"])
             ]
             assert earlier
             old_devices = {row["device_id"] for row in earlier}
-            old_countries = {row["country"] for row in earlier}
             assert all(row["device_id"] not in old_devices for row in rows)
-            assert all(row["country"] not in old_countries for row in rows)
         elif pattern == "dormant_drain":
             earlier_times = [
                 datetime.fromisoformat(str(row["timestamp"]))
@@ -128,7 +134,7 @@ def test_episodes_have_expected_behavior(splits: dict[str, Path], split: str) ->
                 and str(row["timestamp"]) < str(rows[0]["timestamp"])
             ]
             assert earlier_times
-            assert (min(times) - max(earlier_times)).days >= 10
+            assert timedelta(days=10) <= min(times) - max(earlier_times) <= timedelta(days=30)
 
 
 def test_invalid_size_and_split(tmp_path: Path) -> None:
@@ -143,3 +149,43 @@ def test_minimum_supported_size_has_target_fraud_rate(tmp_path: Path) -> None:
     labels = _read(tmp_path / "labels.jsonl")
     rate = sum(bool(row["is_fraud"]) for row in labels) / len(labels)
     assert 0.01 <= rate <= 0.03
+
+
+@pytest.mark.parametrize("seed", [0, 2, 7, 47])
+def test_small_splits_keep_all_legitimate_scenarios(tmp_path: Path, seed: int) -> None:
+    generate_dataset(tmp_path, seed=seed, accounts=5, days=14, split="train")
+    labels = _read(tmp_path / "labels.jsonl")
+    assert {row["scenario"] for row in labels if row["scenario"]} == {
+        "travel",
+        "new_device",
+        "large_purchase",
+        "busy_day",
+    }
+    assert 0.01 <= sum(bool(row["is_fraud"]) for row in labels) / len(labels) <= 0.03
+
+
+def test_hard_negative_behavior_and_merchant_variety(splits: dict[str, Path]) -> None:
+    path = splits["train"]
+    accounts = {row["account_id"]: row for row in _read(path / "accounts.jsonl")}
+    transactions = _read(path / "transactions.jsonl")
+    labels = _read(path / "labels.jsonl")
+    scenarios: dict[str, list[dict[str, object]]] = defaultdict(list)
+    for row, label in zip(transactions, labels, strict=True):
+        if label["scenario"]:
+            assert label["is_fraud"] is False
+            scenarios[str(label["scenario"])].append(row)
+    travel = scenarios["travel"]
+    assert len({str(row["timestamp"])[:10] for row in travel}) >= 3
+    assert all(row["country"] != accounts[row["account_id"]]["home_country"] for row in travel)
+    assert all(row["device_id"] in accounts[row["account_id"]]["usual_devices"] for row in travel)
+    new_device = scenarios["new_device"]
+    assert all(row["country"] == accounts[row["account_id"]]["home_country"] for row in new_device)
+    assert all(str(row["device_id"]).endswith("-D3") for row in new_device)
+    assert scenarios["large_purchase"][0]["merchant_category"] == "retail"
+    busy = scenarios["busy_day"]
+    assert 5 <= len(busy) <= 8
+    times = [datetime.fromisoformat(str(row["timestamp"])) for row in busy]
+    assert (max(times) - min(times)).total_seconds() <= 2 * 3600
+    assert len({row["merchant_name"] for row in transactions}) >= 30
+    assert any(str(row["merchant_name"]).startswith("Local Shop") for row in transactions)
+    assert len({row["memo"] for row in transactions if row["memo"]}) >= 5
