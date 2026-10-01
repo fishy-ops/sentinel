@@ -9,12 +9,12 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 : "${LLAMA_CPP:?set LLAMA_CPP to a llama.cpp checkout}"
 
 cd "$ROOT/.."
-uv run python -m training.build_dataset --out training/data --accounts 300 --seed 1337
+uv run python -m training.build_dataset --out training/data --accounts 600 --seed 1337
 
 uvx --from mlx-lm mlx_lm.lora --model "$BASE" --train --data training/data \
-  --adapter-path training/adapters --iters 900 --batch-size 1 --grad-accumulation-steps 4 \
+  --adapter-path training/adapters --iters 1500 --batch-size 1 --grad-accumulation-steps 4 \
   --num-layers 16 --learning-rate 1e-4 --max-seq-length 8192 --seed 7 \
-  --steps-per-eval 300 --val-batches 20 --save-every 300
+  --steps-per-eval 500 --val-batches 20 --save-every 500
 
 uvx --from mlx-lm mlx_lm.fuse --model "$BASE" --adapter-path training/adapters \
   --save-path training/build/fused
@@ -39,3 +39,6 @@ for size in 1.5b 7b; do
   ollama create "sentinel-base:$size" -f "training/modelfiles/base-$size.Modelfile"
 done
 (cd training/modelfiles && ollama create sentinel-analyst:1.5b -q q4_K_M -f analyst.Modelfile)
+
+# The f16 GGUF and fused weights are only needed for the import.
+rm -rf training/build

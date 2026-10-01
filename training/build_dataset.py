@@ -151,6 +151,14 @@ def _claims(
             "signal.amount_to_p95",
             "stats.p95_amount",
         )
+    elif "p95_amount" in stats and ratio >= 1:
+        add(
+            "amount_raised",
+            f"The amount is {ratio:.1f}x the account's prior 95th percentile of "
+            f"{_money(stats['p95_amount'])}: above normal for this account, but not extreme.",
+            "signal.amount_to_p95",
+            "stats.p95_amount",
+        )
     elif "p95_amount" in stats and signal["account_age"] >= 5:
         add(
             "amount_normal",
@@ -159,6 +167,14 @@ def _claims(
             f"{_money(stats['p95_amount'])}.",
             "stats.median_amount",
             "stats.p95_amount",
+        )
+    if signal["account_age"] >= 1:
+        add(
+            "activity",
+            f"Earlier transactions on the account: {_number(signal['count_1h'])} in the hour "
+            f"before this one and {_number(signal['count_24h'])} in the day before.",
+            "signal.count_1h",
+            "signal.count_24h",
         )
     if signal["count_10m"] >= 3:
         add(
@@ -263,12 +279,20 @@ def build_report(
     signals = [PHRASES[kind] for kind in kinds if kind in PHRASES]
     tx = refs[flagged]
     lead = f"{_money(tx['amount'])} {tx['currency']} at {tx['untrusted_text']['merchant_name']}"
-    reasons = "; ".join(signals[:3]) if signals else "a model score with no single clear cause"
-    if pattern:
+    reasons = "Main signals: " + "; ".join(signals[:3]) if signals else "No signal stands out"
+    strength = len(SUSPICIOUS & set(kinds))
+    if pattern and strength >= 2:
         risk, action = "high", "block_and_contact"
-        if len(SUSPICIOUS & set(kinds)) <= 1:
-            risk, action = "medium", "review"
         verdict = "The combination is consistent with fraud and should not be approved unchecked."
+    elif pattern:
+        risk, action = "medium", "review"
+        verdict = (
+            "One signal stands out while the rest of the account's behaviour looks ordinary, "
+            "so this needs a person to look before it is cleared."
+            if strength
+            else "The detectors scored it on a mix of small deviations, so this needs a person "
+            "to look before it is cleared."
+        )
     elif scenario in ("travel", "large_purchase", "busy_day", "new_device"):
         risk, action = "low", _pick(rng, "approve", "approve", "review")
         verdict = (
@@ -288,7 +312,7 @@ def build_report(
         "were not available.",
     )
     return {
-        "summary": f"Flagged: {lead}. Main signals: {reasons}. {verdict}",
+        "summary": f"Flagged: {lead}. {reasons}. {verdict}",
         "evidence": [item for _, item in claims[:6]],
         "risk_level": risk,
         "recommended_action": action,
@@ -359,7 +383,7 @@ def build(out: Path, accounts: int, seed_value: int, artifact: str) -> dict[str,
             for flag in session.scalars(select(Flag).order_by(Flag.id)):
                 transaction = session.get(Transaction, flag.transaction_id)
                 label = labels[transaction.id]
-                if rng.random() < 0.12:
+                if rng.random() < 0.15:
                     injected = rng.choice(INJECTIONS)
                     if rng.random() < 0.5:
                         transaction.memo = injected
