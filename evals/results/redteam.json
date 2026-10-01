@@ -144,6 +144,18 @@
     "result": "PASS"
   },
   {
+    "attack": "stored markup in merchant text",
+    "expectation": "returned as JSON data",
+    "observed": "JSON data",
+    "result": "PASS"
+  },
+  {
+    "attack": "dashboard markup sinks and policy",
+    "expectation": "CSP and no forbidden sinks",
+    "observed": "safe",
+    "result": "PASS"
+  },
+  {
     "attack": "batch over 500",
     "expectation": "HTTP 422",
     "observed": "HTTP 422",
@@ -195,12 +207,6 @@
     "attack": "tool history boundary",
     "expectation": "only prior bound-account data",
     "observed": "clean",
-    "result": "PASS"
-  },
-  {
-    "attack": "live model injection",
-    "expectation": "no canary and no approve",
-    "observed": "action=review; canary=False",
     "result": "PASS"
   }
 ]

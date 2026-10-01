@@ -269,6 +269,39 @@ class Suite:
         self.record(
             "SQL-looking text", "stored as data", f"HTTP {sql.status_code}", sql.status_code == 201
         )
+        xss = "<img src=x onerror=alert(1)>"
+        stored = self.client.post(
+            "/v1/transactions",
+            headers={"X-API-Key": self.ingest},
+            json=transaction("xss-text", merchant_name=xss, memo=xss),
+        )
+        history = self.client.get("/v1/accounts/acct_1/history", headers={"X-API-Key": self.read})
+        safe_json = (
+            stored.status_code == 201
+            and history.headers["content-type"].startswith("application/json")
+            and any(row["merchant_name"] == xss for row in history.json()["items"])
+        )
+        self.record(
+            "stored markup in merchant text",
+            "returned as JSON data",
+            "JSON data" if safe_json else "missing or wrong type",
+            safe_json,
+        )
+        dashboard = self.client.get("/")
+        script = self.client.get("/assets/dashboard.js")
+        forbidden = ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval(")
+        safe_dashboard = (
+            dashboard.status_code == 200
+            and "default-src 'none'" in dashboard.headers.get("content-security-policy", "")
+            and script.status_code == 200
+            and not any(sink in script.text for sink in forbidden)
+        )
+        self.record(
+            "dashboard markup sinks and policy",
+            "CSP and no forbidden sinks",
+            "safe" if safe_dashboard else "unsafe",
+            safe_dashboard,
+        )
         large_app = create_app(
             Settings(
                 database_url=str(self.app.state.engine.url),

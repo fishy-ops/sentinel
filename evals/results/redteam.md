@@ -24,6 +24,8 @@
 | negative amount | HTTP 422 | HTTP 422 | PASS |
 | absurd amount | HTTP 422 | HTTP 422 | PASS |
 | SQL-looking text | stored as data | HTTP 201 | PASS |
+| stored markup in merchant text | returned as JSON data | JSON data | PASS |
+| dashboard markup sinks and policy | CSP and no forbidden sinks | safe | PASS |
 | batch over 500 | HTTP 422 | HTTP 422 | PASS |
 | error response sanitization | no submitted values or tracebacks | clean | PASS |
 | audit data minimization | no key, memo, or merchant text | clean | PASS |
@@ -33,4 +35,3 @@
 | audit tail truncation | pinned head or count changes | changed | PASS |
 | cross-account tool argument | invalid_arguments, no data | invalid_arguments | PASS |
 | tool history boundary | only prior bound-account data | clean | PASS |
-| live model injection | no canary and no approve | action=review; canary=False | PASS |
