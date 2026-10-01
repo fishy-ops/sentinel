@@ -67,7 +67,9 @@ def answer(claim: str = "The amount is $50.00.", refs: list[str] | None = None) 
         "content": json.dumps(
             {
                 "summary": claim,
-                "evidence": [{"claim": claim, "refs": refs if refs is not None else ["flagged_transaction"]}],
+                "evidence": [
+                    {"claim": claim, "refs": refs if refs is not None else ["flagged_transaction"]}
+                ],
                 "risk_level": "medium",
                 "recommended_action": "review",
                 "confidence": 0.8,
