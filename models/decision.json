@@ -1,0 +1,159 @@
+{
+  "base_model": "Qwen/Qwen2.5-1.5B-Instruct",
+  "data_hash": "da61aba12ab91bde43374f9211a17dce804bb64f0609bd20827f2c5511d235ca",
+  "gate_semantics": "approve p < low; block p > high; equality goes to review",
+  "gate_thresholds": {
+    "high": 0.6932714888836756,
+    "low": 0.34245635506175814
+  },
+  "label_token_ids": {
+    "fraud": [
+      9834,
+      902
+    ],
+    "pattern": [
+      32,
+      33,
+      34,
+      35,
+      36,
+      37
+    ]
+  },
+  "library_versions": {
+    "mlx": "0.32.3",
+    "mlx-lm": "0.30.7",
+    "tokenizers": "0.23.2",
+    "transformers": "5.18.0"
+  },
+  "questions": [
+    {
+      "name": "fraud",
+      "options": [
+        [
+          "yes",
+          "fraudulent"
+        ],
+        [
+          "no",
+          "legitimate"
+        ]
+      ],
+      "text": "Is this flagged transaction fraudulent?",
+      "token_ids": [
+        9834,
+        902
+      ],
+      "token_labels": [
+        " yes",
+        " no"
+      ]
+    },
+    {
+      "name": "pattern",
+      "options": [
+        [
+          "A",
+          "velocity burst"
+        ],
+        [
+          "B",
+          "account takeover"
+        ],
+        [
+          "C",
+          "amount spike"
+        ],
+        [
+          "D",
+          "structuring under the reporting threshold"
+        ],
+        [
+          "E",
+          "draining a dormant account"
+        ],
+        [
+          "F",
+          "legitimate activity"
+        ]
+      ],
+      "text": "Which pattern best describes this flagged transaction?",
+      "token_ids": [
+        32,
+        33,
+        34,
+        35,
+        36,
+        37
+      ],
+      "token_labels": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "F"
+      ]
+    }
+  ],
+  "temperatures": {
+    "fraud": 0.7664398400131637,
+    "pattern": 0.9790355559181347
+  },
+  "training": {
+    "batch_size": 8,
+    "brier_weight": 0.5,
+    "epochs": 2,
+    "history": [
+      {
+        "epoch": 1,
+        "train_loss": 0.868546738911584,
+        "valid": {
+          "fraud": {
+            "accuracy": 0.8910081743869209,
+            "loss": 0.2733773298972992
+          },
+          "pattern": {
+            "accuracy": 0.8810172570390554,
+            "loss": 0.47588199445301943
+          }
+        }
+      },
+      {
+        "epoch": 2,
+        "train_loss": 0.1795301623209854,
+        "valid": {
+          "fraud": {
+            "accuracy": 0.9663941871026339,
+            "loss": 0.13797253379493318
+          },
+          "pattern": {
+            "accuracy": 0.9545867393278837,
+            "loss": 0.1653844563495446
+          }
+        }
+      }
+    ],
+    "learning_rate": 7.5e-05,
+    "lora": {
+      "fine_tune_type": "lora",
+      "lora_parameters": {
+        "dropout": 0.0,
+        "keys": [
+          "self_attn.q_proj",
+          "self_attn.v_proj"
+        ],
+        "rank": 16,
+        "scale": 16.0
+      },
+      "num_layers": 16
+    },
+    "majority_probability": 0.70201643017177,
+    "seed": 7
+  },
+  "validation": {
+    "flags": 1101,
+    "fraud": 786,
+    "majority_probability": 0.7138964577656676
+  }
+}

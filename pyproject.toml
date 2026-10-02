@@ -24,6 +24,7 @@ dependencies = [
 
 [dependency-groups]
 dev = ["pytest", "ruff", "matplotlib"]
+train = ["mlx-lm>=0.28,<0.31; sys_platform == 'darwin'"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

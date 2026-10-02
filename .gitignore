@@ -21,3 +21,4 @@ evals/runs/
 training/data/
 training/adapters/
 training/build/
+training/decision-adapter/

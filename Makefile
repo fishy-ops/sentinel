@@ -1,4 +1,4 @@
-.PHONY: install lint test data train eval-flags eval-explanations redteam run demo eval check help
+.PHONY: install lint test data train eval-flags eval-explanations eval-decisions redteam run demo eval check help
 
 help:
 	@printf 'install            Install dependencies\n'
@@ -8,6 +8,7 @@ help:
 	@printf 'train              Train detectors\n'
 	@printf 'eval-flags         Evaluate flag detection\n'
 	@printf 'eval-explanations  Evaluate reports with a model\n'
+	@printf 'eval-decisions     Evaluate typed decisions with MLX\n'
 	@printf 'eval               Run flag and report evaluation\n'
 	@printf 'redteam            Run security checks without a model\n'
 	@printf 'run                Start the API with reload\n'
@@ -46,6 +47,9 @@ train:
 
 eval-flags:
 	uv run python -m evals.run_flags
+
+eval-decisions:
+	uv run --group train python -m evals.run_decisions
 
 eval-explanations:
 	uv run python -m evals.run_explanations --models qwen2.5:7b --per-group 6 --seed 7

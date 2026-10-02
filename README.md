@@ -70,6 +70,27 @@ The fine-tuned model is a LoRA adapter trained on about 1,100 synthetic conversa
 
 ![Share of fully grounded reports by model](docs/results/grounding.png)
 
+### Typed decisions (Jev-style)
+
+Writing a report takes the generative model about four seconds. For triage that is often more than is needed, so the project also tries the "decision model" idea made popular by [Jev](https://typesafe.ai/) and [Laya](https://github.com/NandhaKishorM/laya): ask declared questions, read only the logits of the allowed answers in a single forward pass, generate nothing, and calibrate the result. Following the [JevLite recipe](https://arxiv.org/abs/2609.23959), the same Qwen 2.5 1.5B is fine-tuned with a loss on the answer labels alone, to answer two questions about a flagged transaction: *is it fraud?* and *which pattern is it?*
+
+On all 1,055 flags in the eval split (732 fraudulent):
+
+| Is it fraud? | Accuracy | AUROC | Calibration error | Time per decision |
+|---|---:|---:|---:|---:|
+| Always say fraud | 0.69 | 0.50 | | |
+| Stock Qwen 1.5B, same readout | 0.49 | 0.45 | 0.34 | 352 ms |
+| **Decision model, calibrated** | **0.96** | **0.996** | 0.045 | **349 ms** |
+| Gradient boosting on the same flags | 0.98 | 0.998 | 0.011 | under 1 ms |
+
+The decision model also names the pattern correctly for 96% of flags (the stock model: 35%). With thresholds chosen on validation data it clears 25% of flags automatically, blocks 69% at 98.5% precision, and sends 5% to a person, letting 0.3% of fraud through.
+
+Two honest conclusions. The gradient-boosted detector is still better and far cheaper at the yes/no question, which is what you would expect on tabular features with a fixed question; the JevLite authors say the same about encoders. What the decision model adds is the pattern, a calibrated probability to gate on, and questions that can be changed without retraining a tabular model. And it is about ten times faster than generating a report, not a hundred: one decision is two passes over a 400-token prompt, which saturates a laptop GPU. Batching does not help.
+
+Robustness, as the share of decisions that change: reversing the option order 0.3%, rewording the question 1.1%, instruction-like text in the merchant name 1.9% or the memo 3.1%. Full tables, confusion matrices, and the reliability diagram are in [`evals/results/decisions.md`](evals/results/decisions.md).
+
+![Reliability diagram and latency for the decision model](docs/results/decisions.png)
+
 ### Red-team suite
 
 35 scripted attacks, all blocked: missing, forged, revoked, and wrong-scope keys; rate-limit evasion by rotating forwarded IPs; replayed and altered idempotent requests; oversized, streamed, and malformed bodies; SQL and control characters in fields; audit-log edits, deletions, and truncation; stored XSS in merchant text; and an agent tool call asking for another account's data. The table is in [`evals/results/redteam.md`](evals/results/redteam.md).
@@ -117,6 +138,12 @@ make check                      # lint, format check, tests
 LLAMA_CPP=/path/to/llama.cpp training/finetune.sh
 uv run python -m evals.run_explanations \
   --models sentinel-base:1.5b,sentinel-analyst:1.5b,sentinel-base:7b
+
+# Typed decision model (Apple silicon)
+uv sync --group train
+uv run python -m training.build_decisions
+uv run --group train python -m training.train_decisions
+make eval-decisions
 ```
 
 Everything is seeded. Detection results reproduce exactly; language-model results can vary slightly across hardware and Ollama versions.
@@ -158,10 +185,11 @@ src/sentinel/
   audit/       hash-chained log and verifier
   detect/      features, rules, Isolation Forest, classifier, combined scorer
   agent/       tools, two-phase explainer, grounding checker
+  decide/      evidence digest, typed questions, label-logit decision model
   dashboard/   analyst console (static HTML, CSS, JS)
   store/       SQLAlchemy models
 data/          synthetic transaction generator
-training/      fine-tuning data builder, script, and model card
+training/      fine-tuning data builders, training scripts, and model card
 evals/         detection, explanation, and red-team evaluations with results
 tests/         unit and API tests
 ```
