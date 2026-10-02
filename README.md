@@ -16,7 +16,8 @@ It is built around one question: **can a small language model that runs on a lap
 | **Detection** | Scores each transaction as it arrives with named rules, an Isolation Forest, and a gradient-boosted classifier. Every flag stores the reasons behind it. |
 | **Analyst agent** | A local model pulls the account's history through five read-only tools and writes a short report: summary, cited evidence, risk level, recommended action, limitations. |
 | **Grounding checker** | Compares the report with the tool results. A claim passes only if its facts appear in the records it cites. Failures are shown to the user, never hidden. |
-| **Evaluation** | A labeled test set, detection accuracy by fraud type, grounding rates by model, adversarial cases, and a red-team suite. |
+| **Decision model** | A Jev-style alternative to the written report: the same small model answers two typed questions about a flag in one pass each and returns calibrated probabilities. |
+| **Evaluation** | A labeled test set, detection accuracy by fraud type, grounding rates by model, decision-model calibration, adversarial cases, and a red-team suite. |
 | **Analyst console** | A web page for working the flag queue, with the account timeline and click-through from each claim to its source record. |
 
 ```mermaid
